@@ -29,11 +29,11 @@ The roadmap below reflects the currently established Engineering Package plan. P
 
 ### Part 2: Pivot and Swing
 - Purpose: define the next domain models for pivot and swing concepts.
-- Status: Next
+- Status: Completed
 - Dependencies: EP-002 Part 1
 - Expected outputs: Pivot and Swing domain models and tests
-- Known next step: implement after EP-001A review
-- Progress indicator: 20% (planning indicator only)
+- Known next step: none
+- Progress indicator: 100% (planning indicator only)
 
 ### Remaining parts
 - Status: Planned
@@ -52,40 +52,64 @@ The roadmap below reflects the currently established Engineering Package plan. P
 
 ## EP-004 – Rule Engine
 - Purpose: implement market rules and decision heuristics.
-- Status: Planned
+- Status: In Progress
 - Dependencies: EP-003
 - Expected outputs: rule engine modules and tests
-- Known next step: confirm rule interfaces after the wave engine
-- Progress indicator: 10% (planning indicator only)
+- Known next step: validate the Elliott Rules Foundation package and collect review feedback
+- Progress indicator: 35% (planning indicator only)
 
-## EP-005 – Scoring Engine
-- Purpose: implement scoring and ranking logic.
-- Status: Planned
+## EP-005 – Wave Detection Engine
+- Purpose: deterministically derive wave candidates from ordered swing sequences and validate them with the rule foundation.
+- Status: In Progress
 - Dependencies: EP-004
-- Expected outputs: scoring engine modules and tests
-- Known next step: define scoring inputs and outputs
-- Progress indicator: 10% (planning indicator only)
+- Expected outputs: detection components, candidate/result models, and tests
+- Known next step: complete review of EP-005 detection behavior and candidate strategy
+- Progress indicator: 35% (planning indicator only)
 
-## EP-006 – Application Layer
-- Purpose: implement application use cases and orchestration.
-- Status: Planned
+## EP-006 – Wave Scoring Engine
+- Purpose: score valid wave candidates objectively and reproducibly without selecting a single winner.
+- Status: In Progress
 - Dependencies: EP-005
-- Expected outputs: application services and tests
-- Known next step: define use cases after scoring rules stabilize
-- Progress indicator: 10% (planning indicator only)
+- Expected outputs: scoring components, weighted criteria, and deterministic ranking output
+- Known next step: review scoring behavior and confirm weighting strategy for next package
+- Progress indicator: 35% (planning indicator only)
 
-## EP-007 – Infrastructure
-- Purpose: implement infrastructure adapters and persistence hooks.
-- Status: Planned
+## EP-007 – Wave Selection Engine
+- Purpose: deterministically select pre-scored wave candidates using pluggable policies.
+- Status: In Progress
 - Dependencies: EP-006
-- Expected outputs: adapters and integration seams
-- Known next step: define external interfaces and storage boundaries
-- Progress indicator: 10% (planning indicator only)
+- Expected outputs: selection policies, selector service, and immutable selection result models
+- Known next step: review selection policy behavior and progression criteria
+- Progress indicator: 35% (planning indicator only)
 
-## EP-008 – Interfaces
-- Purpose: implement user-facing adapters such as CLI, API, or GUI layers.
-- Status: Planned
+## EP-008 – Multi-Timeframe Analysis Foundation
+- Purpose: orchestrate existing selection results across multiple timeframes with deterministic ordering.
+- Status: In Progress
 - Dependencies: EP-007
-- Expected outputs: interface adapters and tests
-- Known next step: define the user experience entry points
-- Progress indicator: 10% (planning indicator only)
+- Expected outputs: timeframe value object, analysis models, and orchestration service
+- Known next step: review multi-timeframe invariants and progression criteria
+- Progress indicator: 35% (planning indicator only)
+
+## EP-009 – Trend Hierarchy & Parent/Child Wave Relations
+- Purpose: model deterministic structural parent/child relationships between selected waves across timeframes.
+- Status: Completed
+- Dependencies: EP-008
+- Expected outputs: hierarchy models, validation result model, and deterministic builder
+- Known next step: review hierarchy invariants and package progression criteria
+- Progress indicator: 35% (planning indicator only)
+
+## EP-010 – Multi-Timeframe Confluence Engine
+- Purpose: evaluate deterministic confluence signals over an existing trend hierarchy without recomputing upstream analysis.
+- Status: In Review
+- Dependencies: EP-009
+- Expected outputs: confluence rules, evidence/conflict models, analyzer, and tests
+- Known next step: review confluence package results and confirm progression criteria
+- Progress indicator: 90% (planning indicator only)
+
+## EP-011 – Analysis Interfaces & Use-Case Contracts
+- Purpose: define deterministic analysis application contracts and inbound interface facades above the domain pipeline.
+- Status: In Progress
+- Dependencies: EP-010
+- Expected outputs: analysis request/response contracts, orchestration services, interface facades, and tests
+- Known next step: complete validation and review of the analysis application boundary
+- Progress indicator: 75% (planning indicator only)

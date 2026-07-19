@@ -4,12 +4,12 @@ from elliottwaver.core.shared.entity import Entity
 from elliottwaver.core.shared.identifiers import EntityId
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(eq=False, frozen=True, slots=True)
 class ExampleEntity(Entity[EntityId]):
     name: str
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(eq=False, frozen=True, slots=True)
 class OtherEntity(Entity[EntityId]):
     name: str
 

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from elliottwaver.core.shared.identifiers import EntityId
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(eq=False, frozen=True, slots=True)
 class Entity[EntityIdT: EntityId]:
     """Identity-based domain object."""
 
