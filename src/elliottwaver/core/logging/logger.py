@@ -1,12 +1,14 @@
 """Logging helpers."""
 
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import structlog
-from structlog.stdlib import BoundLogger
+
+if TYPE_CHECKING:
+    from structlog.stdlib import BoundLogger
 
 
-def get_logger() -> BoundLogger:
+def get_logger() -> "BoundLogger":
     """Return the project logger."""
 
-    return cast(BoundLogger, structlog.get_logger("elliottwaver"))
+    return cast("BoundLogger", structlog.get_logger("elliottwaver"))
