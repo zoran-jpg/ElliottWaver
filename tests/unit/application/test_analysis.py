@@ -754,9 +754,9 @@ def test_analyze_timeframe_service_reports_no_candidates_and_no_selection() -> N
         swing_preparation_port=RecordingSwingPreparationPort(make_valid_swings()),
         analysis_clock=StaticClock(REQUESTED_AT),
         analysis_id_provider=StaticIdProvider(ANALYSIS_ID),
-        detector=cast(Any, EmptyDetector()),
-        scorer=cast(Any, EmptyScorer()),
-        selector=cast(Any, EmptySelector()),
+        detector=cast("Any", EmptyDetector()),
+        scorer=cast("Any", EmptyScorer()),
+        selector=cast("Any", EmptySelector()),
     )
 
     no_candidates = service_no_candidates.analyze(request)
@@ -768,9 +768,9 @@ def test_analyze_timeframe_service_reports_no_candidates_and_no_selection() -> N
         swing_preparation_port=RecordingSwingPreparationPort(make_valid_swings()),
         analysis_clock=StaticClock(REQUESTED_AT),
         analysis_id_provider=StaticIdProvider(ANALYSIS_ID),
-        detector=cast(Any, CandidateDetector((make_wave_candidate(),))),
-        scorer=cast(Any, CandidateScorer((make_scored_candidate(),))),
-        selector=cast(Any, EmptySelector()),
+        detector=cast("Any", CandidateDetector((make_wave_candidate(),))),
+        scorer=cast("Any", CandidateScorer((make_scored_candidate(),))),
+        selector=cast("Any", EmptySelector()),
     )
 
     no_selection = service_no_selection.analyze(request)
@@ -806,7 +806,7 @@ def test_analyze_timeframe_service_is_deterministic_and_propagates_programming_e
         swing_preparation_port=RecordingSwingPreparationPort(make_valid_swings()),
         analysis_clock=StaticClock(REQUESTED_AT),
         analysis_id_provider=StaticIdProvider(ANALYSIS_ID),
-        detector=cast(Any, RaisingDetector()),
+        detector=cast("Any", RaisingDetector()),
     )
 
     with pytest.raises(RuntimeError, match="boom"):
@@ -967,7 +967,7 @@ def test_analyze_multi_timeframe_service_uses_hierarchy_and_confluence_and_repor
         timeframe_use_case=timeframe_use_case,
         analysis_clock=StaticClock(REQUESTED_AT),
         analysis_id_provider=StaticIdProvider(ANALYSIS_ID),
-        trend_hierarchy_builder=cast(Any, InvalidHierarchyBuilder(invalid_hierarchy)),
+        trend_hierarchy_builder=cast("Any", InvalidHierarchyBuilder(invalid_hierarchy)),
         confluence_analyzer=MultiTimeframeConfluenceAnalyzer(),
     )
     request = AnalysisRequest(
