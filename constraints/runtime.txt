@@ -1,0 +1,10 @@
+# Runtime constraints for reproducible production installs.
+# Update intentionally after successful full quality gates.
+annotated-types==0.7.0
+pydantic==2.13.4
+pydantic-core==2.46.4
+pydantic-settings==2.14.2
+python-dotenv==1.2.2
+structlog==25.5.0
+typing-extensions==4.16.0
+typing-inspection==0.4.2

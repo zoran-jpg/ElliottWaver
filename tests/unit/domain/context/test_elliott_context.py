@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
 from decimal import Decimal
+from typing import Any
 
 import pytest
 
@@ -49,7 +50,7 @@ def test_elliott_context_rejects_invalid_percent_values(
 ) -> None:
     selected = make_selected_wave_candidate()
 
-    kwargs: dict[str, object] = {
+    kwargs: dict[str, Any] = {
         "selected_wave": selected,
         "trend_alignment": True,
         "completion_level": CompletionLevel.MATURE,

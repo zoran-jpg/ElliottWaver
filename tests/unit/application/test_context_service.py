@@ -81,7 +81,7 @@ def test_context_service_is_deterministic_for_same_inputs() -> None:
 
 def test_context_request_rejects_missing_selected_wave() -> None:
     with pytest.raises(DomainError, match="selected_wave must not be None"):
-        ContextRequest(selected_wave=None)  # type: ignore[arg-type]
+        ContextRequest(selected_wave=None)
 
 
 def test_context_service_rejects_naive_metadata_timestamp() -> None:
