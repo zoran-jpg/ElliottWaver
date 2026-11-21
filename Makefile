@@ -1,12 +1,14 @@
-.PHONY: install format lint typecheck test quality
+.PHONY: install format fix lint typecheck test quality
 
 install:
 	python -m pip install --upgrade pip
-	pip install -e ".[dev]"
+	python -m pip install -c constraints/dev.txt -e ".[dev]"
 	pre-commit install
 
 format:
 	ruff format .
+
+fix:
 	ruff check . --fix
 
 lint:

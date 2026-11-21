@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from elliottwaver.application.context_response import ContextMetadata, ContextResponse
-from elliottwaver.core.shared.errors import DomainError
 from elliottwaver.domain.context import ContextBuilder
 
 if TYPE_CHECKING:
@@ -14,6 +13,7 @@ if TYPE_CHECKING:
 
     from elliottwaver.application.context_request import ContextRequest
     from elliottwaver.core.shared.identifiers import EntityId
+    from elliottwaver.domain.selection import SelectedWaveCandidate
 
 
 @runtime_checkable
@@ -43,11 +43,7 @@ class ContextService:
     def create_context(self, request: ContextRequest) -> ContextResponse:
         """Create deterministic context from existing analysis results."""
 
-        selected_wave = request.selected_wave
-        if selected_wave is None:
-            message = "selected_wave must not be None"
-            raise DomainError(message)
-
+        selected_wave = cast("SelectedWaveCandidate", request.selected_wave)
         context = self.context_builder.build(
             selected_wave=selected_wave,
             trend_hierarchy=request.trend_hierarchy,

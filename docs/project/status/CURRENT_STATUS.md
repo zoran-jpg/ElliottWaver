@@ -1,18 +1,47 @@
 # Current status
 
-- Repository path: C:\Users\User\Desktop\ElliottWaver
-- Branch: main
-- Current package: EP-011 – Analysis Interfaces & Use-Case Contracts
-- Next package: TBD
-- Completed packages: EP-001, EP-002 Part 1, EP-002 Part 2, EP-003
-- Python version: 3.12.10
-- Virtual environment: .venv
-- Latest test count: 153 passed
-- Latest coverage: 91.64%
-- Ruff result: passed
-- MyPy result: passed with no issues in 67 source files
-- Pytest result: passed
-- Git status before this package: working tree was clean before the creation of the setup files
-- Current untracked or modified project setup areas: .github/, docs/project/
-- Immediate next action: review EP-011 analysis interfaces and use-case contracts package and complete full validation
-- Last updated date: 2026-07-19
+## Document role
+
+`CURRENT_STATUS.md` tracks only the latest verified operational snapshot.
+Historical measurements and superseded states belong to `METRICS.md` and `engineering/HANDOVER.md`.
+
+## Verified repository snapshot
+
+- Repository path: `C:\Users\User\Desktop\ElliottWaver`
+- Branch: `main`
+- Active package: EP-07 (CHART-004, DEF-001, DEF-014) - implementation completed, awaiting architecture/desktop approval
+- Python environment: `.venv` (Python 3.12.10)
+- Working tree: dirty (pre-existing and in-progress package changes)
+
+## Latest verified quality snapshot
+
+### 2026-11-21 (EP-07 local validation)
+
+- `python -m ruff format .`: PASS
+- `python -m ruff check .`: PASS
+- `python -m mypy src tests`: PASS
+- `python -m pytest`: 379 passed
+- Coverage: 92.57%
+
+## Previous verified baseline
+
+- EP-06 local release verification completed:
+  - Wheel build: PASS
+  - Isolated wheel installation: PASS
+  - `pip check`: PASS
+  - CLI/module smoke: PASS
+- Full local quality gates at EP-06 release verification:
+  - `pytest`: 371 passed
+  - Coverage: 92.66%
+  - Ruff: PASS
+  - MyPy: PASS
+
+## Open release gate
+
+- GitHub Actions Linux/Windows matrix execution is still pending final release verification.
+- No claim of executed GitHub-hosted matrix runs is made in this document.
+
+## Next action
+
+- Complete EP-07 implementation and run full quality gates.
+- Keep open GitHub Actions release gate explicitly documented until executed.

@@ -1,32 +1,31 @@
 # Project decisions
 
-This index records accepted project decisions that are currently in effect.
+## Document role
 
-## Decision index
+`DECISIONS.md` is the accepted decision index.
+Each active decision links to an ADR when formalized.
 
-| ID | Title | Status | Context | Decision | Consequences | ADR |
-| --- | --- | --- | --- | --- | --- | --- |
-| DEC-001 | Python 3.12 | Accepted | The project needs a modern, stable runtime for development and validation. | Use Python 3.12 as the supported runtime. | Tooling and code style are aligned with Python 3.12. | ADR not yet created |
-| DEC-002 | src layout | Accepted | The repository needs a package structure that is installable and explicit. | Use the src layout with packages under src/elliottwaver. | Imports are stable and packaging is straightforward. | ADR not yet created |
-| DEC-003 | Hatchling build backend | Accepted | The project needs a pip-compatible build backend. | Use Hatchling as the build backend. | The package can be built and installed with standard tooling. | ADR not yet created |
-| DEC-004 | pip-compatible dev dependencies | Accepted | Development tooling must be installable through the existing dependency configuration. | Define a dev optional dependency group in pyproject.toml. | Local validation tooling can be installed consistently. | ADR not yet created |
-| DEC-005 | Clean Architecture and DDD | Accepted | The project needs strong separation between business logic and infrastructure. | Use Clean Architecture and Domain-Driven Design. | The domain remains testable and independent from external systems. | [docs/adr/0001-clean-architecture.md](docs/adr/0001-clean-architecture.md) |
-| DEC-006 | Decimal for financial values | Accepted | Financial calculations require precision. | Use Decimal for financial values. | Monetary calculations avoid floating-point rounding issues. | ADR not yet created |
-| DEC-007 | Timezone-aware UTC datetimes | Accepted | Domain values should be unambiguous and comparable. | Use timezone-aware UTC datetimes for time-based domain state. | Temporal data is consistent and explicit. | ADR not yet created |
-| DEC-008 | Strict MyPy | Accepted | The project needs strong static guarantees for maintainability. | Run mypy in strict mode for src and tests. | Type issues are caught earlier in development. | ADR not yet created |
-| DEC-009 | Ruff for formatting and linting | Accepted | The project needs consistent formatting and lint rules. | Use Ruff for formatting and linting. | Style and correctness issues are enforced consistently. | ADR not yet created |
-| DEC-010 | pytest and pytest-cov | Accepted | The project needs reliable automated tests and coverage reporting. | Use pytest and pytest-cov. | Tests and coverage are integrated into the workflow. | ADR not yet created |
-| DEC-011 | 90% minimum coverage | Accepted | The project needs a minimum quality bar for test coverage. | Enforce 90% minimum coverage in pytest configuration. | Regression risk is reduced and coverage remains visible. | ADR not yet created |
-| DEC-012 | Engineering Packages as delivery unit | Accepted | The project needs a clear unit for planning and implementation. | Use Engineering Packages as the delivery unit. | Work is scoped, reviewed, and tracked consistently. | ADR not yet created |
-| DEC-013 | No Copilot commits or pushes | Accepted | The repository should remain under deliberate human review for commits and pushes. | Copilot must not create commits or pushes during package work. | Repository history remains intentional and reviewable. | ADR not yet created |
-| DEC-014 | Mandatory architectural review before commit | Accepted | Architectural integrity must be protected as the project grows. | Review architecture and dependency boundaries before committing. | Cross-layer violations are reduced. | ADR not yet created |
-| DEC-015 | Four-layer development model | Accepted | The project needs clear roles across planning and implementation. | Use ChatGPT, GitHub Copilot Agent, GitHub, and Project Intelligence as the four layers. | Responsibilities are clear and coordinated. | ADR not yet created |
-| DEC-016 | PROJECT_MANIFEST.md as primary source of truth | Accepted | The project needs a single authoritative constitution for long-term planning and guidance. | Use PROJECT_MANIFEST.md as the primary source of truth. | Documentation remains consistent and centralized. | ADR not yet created |
-| DEC-017 | Rule evaluation returns violations, not exceptions | Accepted | Elliott rule checks should report business-invalid patterns without failing object construction. | Model rule outcomes with RuleResult and RuleViolation and aggregate them via WaveRuleSet. | Rule checks remain explicit, deterministic, and composable for later engines. | ADR not yet created |
-| DEC-018 | Detection and rule responsibilities are separated | Accepted | Wave detection must remain deterministic and composable while rules stay independently evolvable. | Keep candidate generation in WaveDetector and validation rules in WaveRuleSet without embedding detection into model/rule classes. | Detection can evolve without changing rule semantics, and rule sets can be reused across detectors. | ADR not yet created |
-| DEC-019 | Scoring is deterministic and independent from selection | Accepted | Candidate quality should be measured reproducibly before any best-candidate strategy is introduced. | Implement WaveScorer with weighted ScoreComponents and deterministic tie-breaking in ScoringResult, without selecting a winner. | Scoring remains transparent, testable, and extensible (for example Fibonacci criteria) while preserving separation from detection and decision layers. | ADR not yet created |
-| DEC-020 | Selection is a standalone deterministic post-scoring step | Accepted | Candidate selection must be explicit, policy-driven, and independent from scoring/detection internals. | Implement WaveSelector with pluggable SelectionPolicy strategies that consume ScoringResult without recalculating scores; treat empty selection as valid. | Selection behavior remains deterministic, explainable through reasons, and replaceable without changing detection or scoring modules. | ADR not yet created |
-| DEC-021 | Multi-timeframe analysis is an orchestration layer above the existing pipeline | Accepted | Multi-timeframe support must compose existing detection/rule/scoring/selection outputs without changing their responsibilities. | Implement MultiTimeframeAnalyzer and immutable analysis models that aggregate SelectionResult by unique Timeframe hierarchy, without redetection, revalidation, or rescoring. | Multi-timeframe behavior stays deterministic, side-effect free, and architecture-safe while preserving existing pipeline boundaries. | ADR not yet created |
-| DEC-022 | Trend hierarchy models only structural timeframe relations | Accepted | Hierarchy support is needed to connect selected waves across timeframes while preserving strict boundary between structure and interpretation. | Implement TrendHierarchy domain models and TrendHierarchyBuilder using only timeframe order and parent/child links, without trend interpretation or trading decisions. | Hierarchy remains deterministic, extensible, and safe to evolve independently from market interpretation logic. | ADR not yet created |
-| DEC-023 | Multi-timeframe confluence is deterministic and non-recomputing | Accepted | The hierarchy layer needs a structural interpretation layer that can explain alignment without changing upstream analysis. | Implement confluence evaluation as immutable rules over TrendHierarchy, TrendNode, and ParentChildRelation, reusing existing wave scores and selection outputs without recomputing them. | Confluence remains side-effect free, deterministic, and composable on top of selection, scoring, and hierarchy layers. | ADR not yet created |
-| DEC-024 | Analysis application contracts stay deterministic and port-driven | Accepted | The repository needs an explicit application boundary for analysis requests without embedding infrastructure concerns or recomputing the domain pipeline. | Keep analysis request/response contracts, use-case protocols, and orchestration services in src/elliottwaver/application, expose them through src/elliottwaver/interfaces, and depend on explicit ports for market data, time, IDs, and candle-to-swing preparation. | Inbound adapters can target a stable analysis surface while the domain layer stays isolated and deterministic. | ADR not yet created |
+## Active decision index
+
+| ID | Title | Status | ADR |
+| --- | --- | --- | --- |
+| DEC-001 | Clean Architecture and DDD boundaries | Accepted | [docs/adr/0001-clean-architecture.md](docs/adr/0001-clean-architecture.md) |
+| DEC-002 | Desktop controller/view separation | Accepted | [docs/adr/0002-desktop-controller-view-separation.md](docs/adr/0002-desktop-controller-view-separation.md) |
+| DEC-003 | Worker-thread with queue and `after(...)` UI handoff | Accepted | [docs/adr/0003-desktop-thread-queue-after-model.md](docs/adr/0003-desktop-thread-queue-after-model.md) |
+| DEC-004 | Immutable chart contract as rendering boundary | Accepted | [docs/adr/0004-chart-contract-and-rendering-boundary.md](docs/adr/0004-chart-contract-and-rendering-boundary.md) |
+| DEC-005 | Constraints-driven dependency and packaging strategy | Accepted | [docs/adr/0005-dependency-ci-packaging-strategy.md](docs/adr/0005-dependency-ci-packaging-strategy.md) |
+| DEC-006 | Python 3.12 runtime baseline | Accepted | ADR pending |
+| DEC-007 | Hatchling build backend and src layout | Accepted | ADR pending |
+| DEC-008 | Ruff for linting/formatting, MyPy for static typing | Accepted | ADR pending |
+| DEC-009 | pytest + coverage gate (minimum 90%) | Accepted | ADR pending |
+| DEC-010 | No automatic Copilot commits/pushes | Accepted | ADR pending |
+
+## Governance notes
+
+- `ELLIOTTWAVER_MASTER_CONTROL.md` remains the binding control baseline.
+- Decisions are only marked accepted when reflected in repository code or process configuration.
+- Open release status from EP-06 remains: GitHub Actions matrix execution is pending final release confirmation.
+
+## Historical note
+
+Earlier broad decision lists were consolidated into this active index to remove stale or duplicated entries while keeping accepted architecture intent intact.

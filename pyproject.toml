@@ -17,7 +17,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "black>=24.8,<26.0",
   "mypy>=1.11,<2.0",
   "pre-commit>=3.8,<5.0",
   "pytest>=8.3,<9.0",
@@ -25,12 +24,11 @@ dev = [
   "ruff>=0.6,<1.0",
 ]
 
+[project.scripts]
+elliottwaver = "elliottwaver.__main__:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/elliottwaver"]
-
-[tool.black]
-line-length = 100
-target-version = ["py312"]
 
 [tool.ruff]
 line-length = 100

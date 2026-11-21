@@ -1,0 +1,26 @@
+# Development constraints extending runtime pins.
+# Use together with editable install: python -m pip install -c constraints/dev.txt -e ".[dev]"
+-c runtime.txt
+build==1.3.0
+cfgv==3.5.0
+colorama==0.4.6; sys_platform == "win32"
+coverage==7.15.2
+distlib==0.4.3
+filelock==3.31.0
+identify==2.6.19
+iniconfig==2.3.0
+mypy==1.20.2
+mypy-extensions==1.1.0
+nodeenv==1.10.0
+packaging==26.2
+pathspec==1.1.1
+platformdirs==4.10.1
+pre-commit==4.6.0
+pluggy==1.6.0
+pygments==2.20.0
+pyproject-hooks==1.2.0
+pytest==8.4.2
+pytest-cov==6.3.0
+pyyaml==6.0.3
+ruff==0.15.22
+virtualenv==21.6.1
