@@ -758,6 +758,91 @@ Abgedeckte EP-07-Faelle:
 - Verhalten bei fehlenden/mehrdeutigen Wellenankern
 - Fibonacci-Ratio-/Preis-Mapping
 - Primaer-/Alternativszenario-Annotation
+
+## 21. DEF-EP10-004 finale Architekturkorrektur
+
+Status:
+- DEF-EP10-004 ist im freigegebenen Scope final korrigiert und technisch verifiziert.
+
+Ausgangsfehler (vor Korrektur):
+- Forecast-Nichtverfuegbarkeit wurde im Presenter ueber Exception-Textvergleich gesteuert.
+- Fallback startete eine zweite Analyseausfuehrung.
+- Dadurch wurden CSV-Import, Swing/Pivot/Elliott-Pipeline und Analyseorchestrierung erneut ausgefuehrt.
+
+Finale Architekturentscheidung:
+- Die fachliche Entscheidung "Forecast ja/nein" liegt in der Application-Schicht.
+- `AnalysisApplication.run` bleibt streng/unveraendert (bestehende Semantik fuer bestehende Aufrufer).
+- Neu: `AnalysisApplication.run_with_optional_forecast` fuehrt Analyse genau einmal aus und erzeugt Forecast nur bei strukturiertem Zustand `AnalysisStage.COMPLETED`.
+- Bei nicht forecast-faehigem Analysezustand wird ein semantisch valides leeres `ForecastResult` geliefert (keine kuenstlichen Szenarien/Projektionen/Confidence).
+- Der Desktop-Presenter startet keinen zweiten Analysepfad und verwendet keine Exception-Stringvergleiche mehr.
+
+Local-First-Auswirkung:
+- CSV wird pro produktivem Lauf genau einmal gelesen.
+- Analyse-Pipeline wird pro produktivem Lauf genau einmal ausgefuehrt.
+- Forecast wird nur dann ausgefuehrt, wenn fachlich zulaessig.
+
+Geaenderte Produktionsdateien:
+- `src/elliottwaver/application/analysis_application.py`
+- `src/elliottwaver/interfaces/desktop_tk.py`
+- `src/elliottwaver/bootstrap/analysis_application_factory.py`
+- `src/elliottwaver/infrastructure/market_data/csv_market_data_provider.py`
+
+Geaenderte Testdateien:
+- `tests/unit/application/test_analysis_application.py`
+- `tests/unit/interfaces/test_desktop_tk.py`
+
+Zentrale Testnachweise (neu/angepasst):
+- Application-Orchestrierung (einmalige Analyse, optionaler Forecast, Reuse derselben AnalysisResponse):
+	- `tests/unit/application/test_analysis_application.py`
+- Desktop-Regressionsnachweise fuer produktive Aufrufzaehlungen, Fehlerklassifikation, Teilresultatdarstellung und Sequenzwechsel komplett/partial/komplett:
+	- `tests/unit/interfaces/test_desktop_tk.py`
+
+Produktiver E2E-Nachweis (ohne gemockte Analyse-/Forecast-Ergebnisse):
+- Datensatz: `engineering/testdata/candlestick_patterns_e2e.csv`
+	- Calls: CSV-Read=1, Analyze=1, Forecast=0
+	- Candles=24, Pivots=9, Swings=8, Candlestick-Patterns=16
+	- Elliott-Selektion=0, Analysezustand=`confluence`
+	- Forecast verfuegbar=false, Confidence="-", Fibonacci-Projektionen=0
+	- S/R-Zonen=9, Chart verfuegbar=true
+	- UI-Status="Analyse abgeschlossen - Teilergebnisse verfuegbar"
+	- UI-Forecast-Hinweis gesetzt
+	- Pattern-Bestaetigungsstatus: nur `unknown`
+
+- Datensatz: `engineering/testdata/swing_e2e_100.csv`
+	- Calls: CSV-Read=1, Analyze=1, Forecast=1
+	- Candles=100, Pivots=98, Swings=97, Candlestick-Patterns=0
+	- Elliott-Selektion=1, Analysezustand=`completed`
+	- Forecast verfuegbar=true, Confidence vorhanden, Fibonacci-Projektionen=2
+	- S/R-Zonen=98, Chart verfuegbar=true
+	- UI-Status="Analyse abgeschlossen"
+	- Forecast basiert auf derselben AnalysisResponse-Instanz wie die Analyseausgabe
+
+Negativnachweise:
+- DomainError mit Forecast-Text triggert keinen Sonderpfad und bleibt Fehler.
+- Unerwartete Forecast-DomainErrors werden nicht als regulaere Nichtverfuegbarkeit verschleiert.
+- Ungueltige CSV-Daten bleiben Fehler.
+
+Qualitaets-Gates (finaler Stand dieses Auftrags):
+- `python -m ruff format --check .` -> PASS
+- `python -m ruff check .` -> PASS
+- `python -m mypy src tests` -> PASS (Success: no issues found in 141 source files)
+- `python -m pytest` -> 436 passed
+- Coverage -> 92.56% (Gate >= 90% bestanden)
+
+Explizite Zusatznachweise:
+- EP-09 Regression: `tests/unit/domain/trend_hierarchy/test_trend_hierarchy.py` -> 7 passed
+- EP-DEF-10 Regression: selektiver Lauf in `tests/unit/interfaces/test_desktop_tk.py` (produktive Pfade + Call-Counter + Switching) -> 5 passed
+- Temporale Kausalitaet: selektive Laeufe in `tests/unit/interfaces/test_chart_tk.py` und `tests/unit/interfaces/test_desktop_tk.py` (temporal/confirmation/semantics) -> 2 passed
+- Startup-Test: `tests/unit/test_main_entrypoint.py` -> 1 passed
+
+Schutz- und Integritaetsnachweise:
+- Vorher-Baseline: `engineering/_audit/sha256_pre_def_ep10_004_finalfix_20261127_230433.json`
+- Nachher-Vergleich: `engineering/_audit/sha256_post_compare_def_ep10_004_finalfix_20261127_230952.json`
+- Unveraendert nach SHA: beide Master-Control-Dateien, geschuetzte Tests, `test_market_data.csv`, beide produktiven E2E-Testdaten.
+
+Verbleibende Einschraenkungen:
+- Visuelle Abnahme bleibt Product-Owner-/Architektur-Review-aktivitaet.
+- Produktive temporale Signalbestaetigung bleibt separat offen.
 - Zeit-/Preiskoordinaten und Overlay-Clipping
 - Zoom/Pan/Reset mit Overlays
 - Mainthread-Sicherheit (bestehende Chart-Mainthread-Guards)
@@ -862,6 +947,46 @@ Verbleibende Risiken:
 - Installationspfad auf constraints-basiertes `python -m pip` umgestellt:
 	- `Makefile`
 	- `README.md`
+
+## 22. EP-DEF-10 Abschluss und strategische Master-Control-Aktualisierung
+
+Status:
+- Technische und visuelle Abnahme von EP-DEF-10 sind erfolgt.
+- Produktive temporale Signalbestaetigung bleibt offen.
+- Git-Versionierung bleibt ausstehend bis separate Freigabe.
+
+Freigegebener Dokumentationsscope dieses Auftrags:
+- `ELLIOTTWAVER_MASTER_CONTROL.md` (Repository-Root) aktualisiert.
+- `engineering/HANDOVER.md` aktualisiert.
+
+Nicht geaendert in diesem Auftrag:
+- Keine produktiven Python-Dateien.
+- Keine bestehenden Tests.
+- Keine Testdaten.
+- Keine Audit-Artefakte.
+- `.github/ELLIOTTWAVER_MASTER_CONTROL.md` unveraendert (leer belassen).
+
+Ergaenzte strategische Inhalte in der Root-Master-Control:
+- EP-DEF-10 Abschlussstatus und Qualitaetsstand (436 Tests, 92.56% Coverage, Ruff/MyPy/E2E PASS).
+- Fuehrende Governance-Rolle der Root-Master-Control.
+- Verbindliche Architekturprinzipien (Local First, Validation First, Deterministic First, Modular First, Resource Efficient, AI Ready, Cloud Ready, Cloud Optional, Scale on Demand, Human in Control, Safety First).
+- Lokaler Entwicklungs-/Betriebsfokus mit Referenzhardware (i3-1215U, ~8 GB RAM, iGPU).
+- Strategisches Marktuniversum (~35 Basiswerte, konfigurierbar).
+- Multi-Timeframe-Zielarchitektur (bis zu 7 Zeitebenen, bis zu 245 Kombinationen, inkrementell/ressourcenschonend).
+- Command-Center-Designreferenz inkl. Profilvorschlaege als Zielbild.
+- Strategische Indikator-/Ampellogik und Bewertungsgrenzen.
+- Strategische Anwendungsbereiche als Roadmap-Zielbild.
+- Lokale Agentenarchitektur als langfristige Zielrichtung.
+- Verbindliche fachliche Voraussetzungen vor produktiver Signalnutzung.
+- Langfristige Validierungsstrategie (Phasen A-F).
+
+Sicherheits-/Git-Pruefung in diesem Auftrag:
+- Branch: `feature/ep10-candlestick-patterns`.
+- HEAD: `1a98f88bc8266caac2ba4d729d9747a2194101f4`.
+- Git-Index blieb leer.
+
+Hinweis:
+- Die Dateizuordnung fuer spaetere Git-Freigabe (EP-DEF-10 vs. geschuetzt/fremd/audit) wurde explizit als separater Abschlussbericht im Chat ausgegeben und nicht als Commit-Vorbereitung ausgefuehrt.
 
 Umsetzung DEF-016 (Formatter-Konsolidierung):
 - Black aus Dev-Dependencies entfernt.
@@ -1258,6 +1383,81 @@ Geaenderte Dateien (Visual Fix):
 - `src/elliottwaver/interfaces/chart_tk.py`
 - `tests/unit/application/test_support_resistance.py`
 - `tests/unit/interfaces/test_chart_tk.py`
+
+## 25. EP-10 Fortschritt - Candlestick Patterns (ohne Commit/Push)
+
+Status:
+- Technische Umsetzung im aktuellen Scope: PASS
+- Git-Aktion: kein Commit, kein Push (gem. Vorgabe)
+
+Umgesetzte Punkte:
+- Neuer Domain-Baustein fuer deterministische Kerzenformations-Erkennung:
+	- `src/elliottwaver/domain/patterns/candlestick_patterns.py`
+	- `src/elliottwaver/domain/patterns/__init__.py`
+- Mapping in den Chart-Vertrag erweitert um immutable Pattern-Payloads:
+	- `src/elliottwaver/application/chart_contract.py`
+	- `src/elliottwaver/application/__init__.py`
+- Chart-Renderer erweitert um Pattern-Marker und UI-Toggle `Kerzenformationen` (default EIN):
+	- `src/elliottwaver/interfaces/chart_tk.py`
+
+Tests (neu/erweitert):
+- Neu: `tests/unit/domain/patterns/test_candlestick_patterns.py`
+- Erweitert: `tests/unit/application/test_chart_contract.py`
+- Erweitert: `tests/unit/interfaces/test_chart_tk.py`
+
+Validierung (vollstaendige Gates):
+- `python -m ruff format .` -> PASS
+- `python -m ruff check .` -> PASS
+- `python -m mypy src tests` -> PASS
+- `python -m pytest` -> PASS (`403 passed`)
+- Coverage: `91.73%` (Gate >= 90% bestanden)
+
+Explizit nicht geaendert (geschuetzt):
+- `tests/unit/application/test_context_service.py`
+- `tests/unit/domain/context/test_elliott_context.py`
+
+## 25.1 EP-10 Qualitaetsgate und Architektur-Nachpruefung (2026-11-27)
+
+Scope der Nachpruefung:
+- Vollstaendiger Soll-Ist-Abgleich der implementierten Candlestick-Patterns.
+- Git-Sicherheitsnachweis ohne Git-Korrekturen.
+- Erweiterte Formations-Tests (positiv/negativ/grenzwertig).
+- Neue E2E-Fixture fuer deterministische Pattern-Erkennung.
+- Engulfing-Dochtgrenze (30%) in der eigentlichen Erkennungsregel nachgezogen.
+
+Nachgezogene/aktualisierte Dateien:
+- `engineering/testdata/candlestick_patterns_e2e.csv`
+- `tests/unit/domain/patterns/test_candlestick_patterns.py`
+- `tests/unit/interfaces/test_chart_tk.py`
+- `tests/unit/interfaces/test_desktop_tk.py`
+
+Explizite Nachpruefungen:
+- EP-10 Fixture-Integration:
+	- `tests/unit/interfaces/test_desktop_tk.py::test_candlestick_fixture_detects_expected_pattern_families`
+	- Ergebnis: PASS
+- Prefix-Invariance auf Fixture:
+	- `tests/unit/interfaces/test_desktop_tk.py::test_candlestick_pattern_fixture_is_prefix_invariant`
+	- Ergebnis: PASS
+- EP-09 Regression (S/R auf vorhandener Engineering-Fixture):
+	- `tests/unit/interfaces/test_desktop_tk.py::test_present_csv_analysis_populates_support_resistance_zones_from_engineering_fixture`
+	- Ergebnis: PASS
+
+Qualitaetsgates (aktueller Lauf):
+- `python -m ruff format .` -> PASS
+- `python -m ruff check .` -> PASS
+- `python -m mypy src tests` -> PASS
+- `python -m pytest` -> PASS (`419 passed`)
+- Coverage: `92.40%` (Gate >= 90% bestanden)
+
+Startup-Check:
+- `python -m elliottwaver` gestartet.
+- Ergebnis: Prozess startet ohne unmittelbaren Traceback/Abbruch.
+- Hinweis: UI-Prozess bleibt erwartungsgemaess aktiv bis manuell beendet.
+
+Status (nur fuer diese Nachpruefung):
+- Technische Abnahme: BLOCKED (offene EP-10-Anforderungsabweichungen dokumentiert, z. B. fehlender bestaetigter Zeitstempel und fehlender nachgewiesener Piano-Filter im Domain-Config-Vertrag)
+- Visuelle Abnahme: OFFEN
+- Git-Versionierung: NICHT FREIGEGEBEN
 - `tests/unit/interfaces/test_desktop_tk.py`
 
 Zusatztests (neu/erweitert):
@@ -1335,3 +1535,124 @@ Expliziter Integrationsnachweis (`engineering/testdata/swing_e2e_100.csv`):
 Startup-Check:
 - `python -m elliottwaver` gestartet.
 - Kein unmittelbarer Traceback beim Start beobachtet; Prozess laeuft erwartungsgemaess in der UI-Hauptschleife und wurde fuer die Session-Beendigung kontrolliert beendet.
+
+### 25.2 EP-10 Architekturkorrektur (DEF-EP10-001/002/003) und finales Quality Gate - 2026-11-27
+
+Status:
+- Technische Abnahme: BLOCKED
+- Visuelle Abnahme: OFFEN
+- Git-Versionierung: NICHT FREIGEGEBEN
+
+Git-Sicherheitspruefung:
+- Branch: `feature/ep10-candlestick-patterns` (erwartet)
+- HEAD: `1a98f88bc8266caac2ba4d729d9747a2194101f4` (erwartet)
+- Git-Index: leer (keine staged Aenderungen)
+
+Architekturentscheidung DEF-EP10-001 (Zeitstempelsemantik):
+- Umgesetzt wurde eine kleinste rueckwaertskompatible Erweiterung nur im Pattern-Domain-Modul.
+- Geometrische Erkennung bleibt unveraendert und deterministisch.
+- Zeitliche Bestaetigung ist nun optional und explizit uebergebbar ueber `CandleTemporalSemantics` + `as_of`.
+- Ohne hinreichende Semantik bleibt der Status explizit `unknown`.
+- `confirmed_at` wird nur gesetzt, wenn alle benoetigten Kerzen geschlossen und verfuegbar sind und `as_of` den maximalen `available_at`-Zeitpunkt erreicht.
+- Keine Ableitung von `closed_at` aus Kerzenabstaenden.
+- Keine Nutzung der Systemuhr in der historischen Bestaetigungslogik.
+
+Umgesetzte Dateien (dieser Auftrag):
+- `src/elliottwaver/domain/patterns/candlestick_patterns.py`
+- `src/elliottwaver/domain/patterns/__init__.py`
+- `tests/unit/domain/patterns/test_candlestick_patterns.py`
+- `tests/unit/interfaces/test_desktop_tk.py`
+- `engineering/testdata/candlestick_patterns_temporal_semantics.csv`
+
+DEF-EP10-001 Nachweise:
+- Bekannte Kerzenschlusszeit / bekannte Verfuegbarkeit -> `confirmed`
+- Unbekannte Semantik -> `unknown`
+- Offene Kerze (`is_closed=false`) -> `pending`
+- Mehrkerzenformation -> Bestaetigung erst nach spaetestem `available_at`
+- Historische As-of-Analyse -> `pending` vor, `confirmed` ab Verfuegbarkeit
+- Zeitzonenvalidierung -> nur UTC akzeptiert
+- Datenluecken und unregelmaessige Abstaende -> keine impliziten Zeitableitungen, geometrische Erkennung bleibt stabil
+- Prefix-Invariance bleibt erhalten
+
+DEF-EP10-002 (Piano-Filter):
+- Fachlich wirksamer Domain-Filter: `min_engulfing_body_factor = 1.20` inkl. Grenzfalltests (positiv/negativ/boundary).
+- Der vorhandene UI-Pixelabstandsfilter ist rein visuelle Marker-Dichtebegrenzung und kein Trading-/Domain-Filter.
+- Domain-Klassifikation bleibt von UI-Renderlogik getrennt.
+- Bewertung: Kein zusaetzlicher redundanter Domain-Filter eingefuehrt.
+
+DEF-EP10-003 (Governance-Kollision, read-only geprueft):
+- `docs/project/engineering-packages/EP-010-MULTI-TIMEFRAME-CONFLUENCE-ENGINE.md` belegt EP-010 als Confluence-Paket.
+- Die aktuelle Candlestick-Implementierung wird als EP-10-Nachpruefung gefuehrt und kollidiert damit in der Nummernlogik.
+- `ELLIOTTWAVER_MASTER_CONTROL.md` (Projektstamm) ist inhaltlich befuellt.
+- `.github/ELLIOTTWAVER_MASTER_CONTROL.md` ist leer (0 Bytes).
+- Empfehlung:
+	- Eine einzige fuehrende Master-Control-Datei festlegen (Projektstamm bevorzugt, da inhaltlich gefuellt).
+	- Kuenftige Paketnummern eindeutig trennen (z. B. `EP-CANDLE-010A` oder neues eindeutiges EP-Label), statt bestehende EP-010-Zuordnung doppelt zu belegen.
+
+Quality-Gates (vollstaendiger Lauf):
+- `python -m ruff format --check .` -> PASS
+- `python -m ruff check .` -> PASS
+- `python -m mypy src tests` -> PASS (`no issues found in 141 source files`)
+- `python -m pytest` -> PASS (`426 passed`)
+- Coverage: `92.32%` (Gate >= 90% bestanden)
+
+Gezielte Nachweise:
+- EP-10-E2E + Prefix + As-of/Temporal:
+	- `python -m pytest --no-cov tests/unit/interfaces/test_desktop_tk.py -k "candlestick_fixture_detects_expected_pattern_families or temporal_semantics_fixture_supports_as_of_confirmation_and_unknown_states or candlestick_pattern_fixture_is_prefix_invariant"` -> PASS
+- EP-09-Regression:
+	- `python -m pytest --no-cov tests/unit/interfaces/test_desktop_tk.py -k "present_csv_analysis_populates_support_resistance_zones_from_engineering_fixture"` -> PASS
+- Zeitstempel-/Kausalitaetstests:
+	- `python -m pytest --no-cov tests/unit/domain/patterns/test_candlestick_patterns.py -k "temporal_semantics or prefix_invariant or sets_unknown_confirmation_timestamp_semantics"` -> PASS
+
+Startup-Test:
+- `python -m elliottwaver` gestartet.
+- Ergebnis: kein unmittelbarer Traceback; Prozess bleibt erwartungsgemaess aktiv bis manueller Beendigung.
+
+SHA256-Schutzpruefung:
+- Pre-Baseline: `engineering/_audit/sha256_pre.json`
+- Post-Vergleich: `engineering/_audit/sha256_post_compare.json`
+- Unveraendert bestaetigt (u. a. geschuetzt):
+	- `tests/unit/application/test_context_service.py`
+	- `tests/unit/domain/context/test_elliott_context.py`
+	- `ELLIOTTWAVER_MASTER_CONTROL.md`
+	- `.github/ELLIOTTWAVER_MASTER_CONTROL.md`
+	- `test_market_data.csv`
+
+Restrisiken / verbleibende Einschraenkungen:
+- Die neue Zeitsemantik-Bestaetigung ist derzeit im Pattern-Domain-Modul und in Tests nachgewiesen; eine durchgaengige Datenvertragsweitergabe ueber alle Adapter bleibt ein separater Architektur-/Backlog-Schritt.
+- Governance-Kollision (EP-010-Zuordnung) ist dokumentiert, aber ohne separate Freigabe bewusst nicht strukturell geaendert.
+
+### 25.3 EP-DEF-10 finale Freigabevorbereitung (2026-11-27)
+
+Architekturentscheidungen (uebernommen):
+- Das aktuelle Candlestick-Paket wird logisch als `EP-DEF-10` gefuehrt.
+- Das urspruengliche `EP-010` bleibt unveraendert dem Paket `EP-010-MULTI-TIMEFRAME-CONFLUENCE-ENGINE` zugeordnet.
+- `ELLIOTTWAVER_MASTER_CONTROL.md` im Projektstamm ist kuenftig fuehrendes Steuerungsdokument.
+- `.github/ELLIOTTWAVER_MASTER_CONTROL.md` bleibt unveraendert.
+- Geometrische Candlestick-Erkennung ist fuer den vereinbarten Analyseumfang akzeptiert.
+- Optionale temporale Domain-Architektur bleibt erhalten.
+- Produktive Zeitintegration ist als spaeteres verpflichtendes Engineering-Paket zurueckgestellt.
+
+Einzige zulaessige funktionale Ergaenzung (umgesetzt):
+- UI-Hinweis bei aktivierten Kerzenformationen zur zeitlichen Aussagekraft ergaenzt:
+	- unknown: `Kerzenformationen: geometrische Erkennung - zeitliche Bestaetigung nicht verfuegbar.`
+	- pending: `Kerzenformationen: geometrische Erkennung - zeitliche Bestaetigung ausstehend.`
+	- confirmed: `Kerzenformationen: geometrische Erkennung - zeitlich bestaetigt.`
+	- gemischt: `Kerzenformationen: geometrische Erkennung - zeitlicher Status gemischt.`
+
+Betroffene Dateien (dieser Schritt):
+- `src/elliottwaver/interfaces/chart_tk.py`
+- `tests/unit/interfaces/test_chart_tk.py`
+
+Gezielter Testnachweis Statusdarstellung:
+- `tests/unit/interfaces/test_chart_tk.py::test_chart_view_displays_candlestick_temporal_status_hint`
+
+Zurueckgestellte Pflichtanforderungen vor produktiver signalbasierter Konfluenzbewertung oder historischer Strategievalidierung:
+- Produktive Integration der Candle-Zeitsemantik.
+- Explizite As-of-Auswertung.
+- Kausale Verfuegbarkeit saemtlicher verwendeter Kontextkerzen.
+- Kausale Bestaetigung und Verfuegbarkeit der Support/Resistance-Zonen.
+- Keine Nutzung unbekannter oder zukuenftiger Informationen als bestaetigte Handelssignale.
+
+Hinweis Master-Control-Strategietext:
+- Der bereits erstellte strategische Textvorschlag ist fuer spaetere Uebernahme vorgemerkt; in diesem Schritt wurden keine Master-Control-Dateien geaendert.

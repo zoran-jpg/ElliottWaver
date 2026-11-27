@@ -31,6 +31,7 @@ from elliottwaver.application.analysis_application import (
 )
 from elliottwaver.application.chart_contract import (
     ChartCandle,
+    ChartCandlestickPattern,
     ChartDataContract,
     ChartFibonacciProjection,
     ChartForecastScenario,
@@ -71,6 +72,7 @@ __all__ = [
     "AnalyzeTimeframeUseCase",
     "CandleToSwingPreparationPort",
     "ChartCandle",
+    "ChartCandlestickPattern",
     "ChartDataContract",
     "ChartFibonacciProjection",
     "ChartForecastScenario",

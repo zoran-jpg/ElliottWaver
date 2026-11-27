@@ -377,3 +377,47 @@ def test_build_chart_data_contract_rejects_conflicting_pivot_coordinates() -> No
         build_chart_data_contract(
             AnalysisApplicationResult(analysis=conflicting_analysis, forecast=result.forecast)
         )
+
+
+def test_build_chart_data_contract_maps_candlestick_patterns() -> None:
+    result = _build_chart_ready_result()
+    timeframe = result.analysis.timeframe_results[0]
+
+    symbol = Symbol("EURUSD")
+    one_hour = MarketTimeframe.ONE_HOUR
+    candles = (
+        Candle(
+            symbol=symbol,
+            timeframe=one_hour,
+            opened_at=datetime(2026, 7, 22, 0, 0, tzinfo=UTC),
+            open=Price.parse("100"),
+            high=Price.parse("101"),
+            low=Price.parse("97"),
+            close=Price.parse("98"),
+            volume=Decimal("10"),
+        ),
+        Candle(
+            symbol=symbol,
+            timeframe=one_hour,
+            opened_at=datetime(2026, 7, 22, 1, 0, tzinfo=UTC),
+            open=Price.parse("97"),
+            high=Price.parse("102"),
+            low=Price.parse("96"),
+            close=Price.parse("101"),
+            volume=Decimal("12"),
+        ),
+    )
+    analysis = replace(
+        result.analysis,
+        timeframe_results=(replace(timeframe, candles=candles),),
+    )
+
+    contract = build_chart_data_contract(
+        AnalysisApplicationResult(analysis=analysis, forecast=result.forecast)
+    )
+
+    patterns = contract.timeframe_data[0].candlestick_patterns
+    assert len(patterns) == 1
+    assert patterns[0].pattern_type == "bullish_engulfing"
+    assert patterns[0].short_label == "ENG+"
+    assert patterns[0].direction == "bullish"

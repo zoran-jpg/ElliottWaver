@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 import tkinter as tk
 from contextlib import suppress
+from csv import DictReader
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -14,6 +15,11 @@ from tests.unit.application.forecast.test_forecast_engine import make_analysis_r
 from tests.unit.domain.context.helpers import make_selected_wave_candidate
 
 from elliottwaver.application import AnalysisApplicationResult
+from elliottwaver.application.analysis import (
+    AnalysisRequest,
+    AnalysisResponse,
+    AnalyzeMultiTimeframeService,
+)
 from elliottwaver.application.chart_contract import (
     ChartCandle,
     ChartDataContract,
@@ -23,8 +29,18 @@ from elliottwaver.application.chart_contract import (
     TimeframeChartData,
 )
 from elliottwaver.application.forecast import ForecastEngine
+from elliottwaver.core.market import Symbol
+from elliottwaver.core.market import Timeframe as MarketTimeframe
 from elliottwaver.core.shared.errors import DomainError
 from elliottwaver.domain.forecast import ForecastResult
+from elliottwaver.domain.market import Candle, Price
+from elliottwaver.domain.patterns import (
+    CandleTemporalSemantics,
+    ConfirmationTimestampStatus,
+    detect_candlestick_patterns,
+    detect_candlestick_patterns_with_temporal_confirmation,
+)
+from elliottwaver.infrastructure.market_data import CsvMarketDataProvider
 from elliottwaver.interfaces.desktop_tk import (
     AnalysisDesktopTkApp,
     CsvAnalysisRequestSpec,
@@ -302,7 +318,161 @@ def test_present_csv_analysis_populates_support_resistance_zones_from_engineerin
     )
 
 
-def test_run_analysis_from_csv_reports_incomplete_analysis_as_domain_error(
+def test_candlestick_fixture_detects_expected_pattern_families() -> None:
+    fixture = (
+        Path(__file__).resolve().parents[3]
+        / "engineering"
+        / "testdata"
+        / "candlestick_patterns_e2e.csv"
+    )
+
+    provider = CsvMarketDataProvider(csv_path=fixture)
+    spec = provider.infer_request_spec()
+    candles = provider.load_candles(
+        symbol=spec.symbol,
+        timeframe=spec.timeframe,
+        start_time=spec.start_time,
+        end_time=spec.end_time,
+    )
+    patterns = detect_candlestick_patterns(candles=candles)
+
+    counts: dict[str, int] = {}
+    for pattern in patterns:
+        counts[pattern.pattern_type] = counts.get(pattern.pattern_type, 0) + 1
+        assert pattern.confirmed_at is None
+        assert pattern.confirmation_status.value == "unknown"
+        assert pattern.ended_at == pattern.candle_timestamps[-1]
+
+    assert counts == {
+        "bearish_engulfing": 2,
+        "bearish_three_line_strike": 1,
+        "bullish_engulfing": 2,
+        "bullish_three_line_strike": 1,
+        "dragonfly_doji": 1,
+        "gravestone_doji": 1,
+        "hammer": 1,
+        "shooting_star": 1,
+        "tweezer_bottom": 3,
+        "tweezer_top": 3,
+    }
+
+
+def test_candlestick_pattern_fixture_is_prefix_invariant() -> None:
+    fixture = (
+        Path(__file__).resolve().parents[3]
+        / "engineering"
+        / "testdata"
+        / "candlestick_patterns_e2e.csv"
+    )
+    rows = fixture.read_text(encoding="utf-8").splitlines()
+
+    candles: list[Candle] = []
+    for row in rows[1:]:
+        symbol, timeframe, opened_at, open_price, high, low, close, volume = row.split(",")
+        candles.append(
+            Candle(
+                symbol=Symbol(symbol),
+                timeframe=MarketTimeframe(timeframe),
+                opened_at=datetime.fromisoformat(opened_at.replace("Z", "+00:00")),
+                open=Price.parse(open_price),
+                high=Price.parse(high),
+                low=Price.parse(low),
+                close=Price.parse(close),
+                volume=Decimal(volume),
+            )
+        )
+
+    full_patterns = detect_candlestick_patterns(candles=tuple(candles))
+    prefix = tuple(candles[:12])
+    prefix_patterns = detect_candlestick_patterns(candles=prefix)
+    cutoff = prefix[-1].opened_at
+    full_prefix = tuple(pattern for pattern in full_patterns if pattern.ended_at <= cutoff)
+
+    assert prefix_patterns == full_prefix
+
+
+def test_temporal_semantics_fixture_supports_as_of_confirmation_and_unknown_states() -> None:
+    fixture = (
+        Path(__file__).resolve().parents[3]
+        / "engineering"
+        / "testdata"
+        / "candlestick_patterns_temporal_semantics.csv"
+    )
+    candles: list[Candle] = []
+    semantics: dict[datetime, CandleTemporalSemantics] = {}
+
+    with fixture.open("r", encoding="utf-8", newline="") as handle:
+        for row in DictReader(handle):
+            opened_at = datetime.fromisoformat(row["opened_at"].replace("Z", "+00:00"))
+            candles.append(
+                Candle(
+                    symbol=Symbol(row["symbol"]),
+                    timeframe=MarketTimeframe(row["timeframe"]),
+                    opened_at=opened_at,
+                    open=Price.parse(row["open"]),
+                    high=Price.parse(row["high"]),
+                    low=Price.parse(row["low"]),
+                    close=Price.parse(row["close"]),
+                    volume=Decimal(row["volume"]),
+                )
+            )
+
+            closed_at_raw = row["closed_at"].strip()
+            available_at_raw = row["available_at"].strip()
+            is_closed_raw = row["is_closed"].strip().lower()
+            semantics[opened_at] = CandleTemporalSemantics(
+                opened_at=opened_at,
+                closed_at=(
+                    datetime.fromisoformat(closed_at_raw.replace("Z", "+00:00"))
+                    if closed_at_raw
+                    else None
+                ),
+                available_at=(
+                    datetime.fromisoformat(available_at_raw.replace("Z", "+00:00"))
+                    if available_at_raw
+                    else None
+                ),
+                is_closed=(
+                    True if is_closed_raw == "true" else False if is_closed_raw == "false" else None
+                ),
+            )
+
+    patterns_before = detect_candlestick_patterns_with_temporal_confirmation(
+        candles=tuple(candles[:2]),
+        temporal_semantics_by_opened_at=semantics,
+        as_of=datetime(2026, 7, 22, 2, 11, tzinfo=UTC),
+    )
+    patterns_after = detect_candlestick_patterns_with_temporal_confirmation(
+        candles=tuple(candles[:2]),
+        temporal_semantics_by_opened_at=semantics,
+        as_of=datetime(2026, 7, 22, 2, 12, tzinfo=UTC),
+    )
+
+    assert len(patterns_before) == 1
+    assert patterns_before[0].confirmation_status is ConfirmationTimestampStatus.PENDING
+    assert patterns_before[0].confirmed_at is None
+
+    assert len(patterns_after) == 1
+    assert patterns_after[0].confirmation_status is ConfirmationTimestampStatus.CONFIRMED
+    assert patterns_after[0].confirmed_at == datetime(2026, 7, 22, 2, 12, tzinfo=UTC)
+
+    unknown_semantics = dict(semantics)
+    unknown_semantics[candles[1].opened_at] = CandleTemporalSemantics(
+        opened_at=candles[1].opened_at,
+        closed_at=datetime(2026, 7, 22, 2, 0, tzinfo=UTC),
+        available_at=datetime(2026, 7, 22, 2, 12, tzinfo=UTC),
+        is_closed=None,
+    )
+    unknown_status_pattern = detect_candlestick_patterns_with_temporal_confirmation(
+        candles=tuple(candles[:2]),
+        temporal_semantics_by_opened_at=unknown_semantics,
+        as_of=datetime(2026, 7, 22, 10, 0, tzinfo=UTC),
+    )[0]
+    assert unknown_status_pattern.confirmation_status is ConfirmationTimestampStatus.UNKNOWN
+    assert unknown_status_pattern.confirmed_at is None
+
+
+def test_run_analysis_from_csv_returns_partial_result_for_incomplete_analysis(
     tmp_path: Path,
 ) -> None:
     csv_path = tmp_path / "candles.csv"
@@ -315,8 +485,12 @@ def test_run_analysis_from_csv_reports_incomplete_analysis_as_domain_error(
         """,
     )
 
-    with pytest.raises(DomainError, match="analysis must be completed"):
-        run_analysis_from_csv(csv_path)
+    result = run_analysis_from_csv(csv_path)
+
+    assert result.analysis.stage.value != "completed"
+    assert result.forecast.is_empty is True
+    assert result.forecast.primary_scenario is None
+    assert result.forecast.projections == ()
 
 
 def test_run_analysis_from_csv_returns_result_for_valid_swings(
@@ -779,6 +953,347 @@ def test_desktop_controller_productive_csv_to_forecast_pipeline_remains_function
     assert "%" in presentation.confidence
     assert "Szenario:" in presentation.forecast_text
     assert "->" in presentation.projection_text
+
+
+def test_desktop_controller_productive_csv_partial_analysis_stays_visible() -> None:
+    csv_path = Path("engineering/testdata/candlestick_patterns_e2e.csv")
+
+    presentation = present_csv_analysis(csv_path)
+
+    assert presentation.error_text is None
+    assert presentation.status == "Analyse abgeschlossen - Teilergebnisse verfuegbar"
+    assert presentation.confidence == "-"
+    assert "Forecast nicht verfugbar" in presentation.forecast_text
+    assert "Keine Fibonacci-Projektionen" in presentation.projection_text
+    assert presentation.chart_data is not None
+
+
+def test_present_csv_analysis_treats_domain_error_with_forecast_text_as_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "elliottwaver.interfaces.desktop_tk.run_analysis_from_csv",
+        lambda _path: (_ for _ in ()).throw(
+            DomainError("analysis must be completed before forecast generation")
+        ),
+    )
+
+    presentation = present_csv_analysis(Path("C:/tmp/demo.csv"))
+
+    assert presentation.status == "Analyse fehlgeschlagen"
+    assert presentation.error_text is not None
+
+
+def test_desktop_app_switching_complete_to_partial_clears_stale_forecast_only() -> None:
+    _FakeThread.instances.clear()
+    view = _FakeView(prompted_path=Path("C:/data/candles.csv"))
+    chart_data = ChartDataContract(
+        symbol="EURUSD",
+        generated_at=datetime(2026, 7, 21, 8, 0, tzinfo=UTC),
+        timeframe_data=(
+            TimeframeChartData(
+                timeframe="1h",
+                candles=(
+                    ChartCandle(
+                        opened_at=datetime(2026, 7, 21, 7, 0, tzinfo=UTC),
+                        open_price=Decimal("100"),
+                        high_price=Decimal("102"),
+                        low_price=Decimal("99"),
+                        close_price=Decimal("101"),
+                    ),
+                ),
+                swings=(),
+                pivots=(),
+            ),
+        ),
+        forecast_scenarios=(
+            ChartForecastScenario(
+                scenario_type="primary",
+                expected_next_wave="5",
+                confidence=Decimal("82"),
+                reasoning=("reason",),
+                projection_targets=(
+                    ChartProjectionTarget(
+                        priority=1,
+                        target_price=Decimal("110"),
+                        confidence=Decimal("82"),
+                        wave_degree="primary",
+                        description=None,
+                    ),
+                ),
+            ),
+        ),
+        fibonacci_projections=(
+            ChartFibonacciProjection(
+                level_ratio=Decimal("1.618"),
+                price=Decimal("110"),
+                direction="up",
+                reference_range=Decimal("10"),
+            ),
+        ),
+    )
+    complete = DesktopAnalysisPresentation(
+        status="Analyse abgeschlossen",
+        confidence="88%",
+        result_text="ok",
+        forecast_text="forecast",
+        projection_text="proj",
+        error_text=None,
+        chart_data=chart_data,
+    )
+    partial = DesktopAnalysisPresentation(
+        status="Analyse abgeschlossen - Teilergebnisse verfuegbar",
+        confidence="-",
+        result_text="partial",
+        forecast_text="Forecast nicht verfugbar - keine gueltige Elliott-Wellenstruktur.",
+        projection_text="Keine Fibonacci-Projektionen verfugbar.",
+        error_text=None,
+        chart_data=chart_data,
+    )
+    queued = [complete, partial]
+
+    controller = DesktopAnalysisController(
+        view=view,
+        run_analysis_presentation=lambda _path: queued.pop(0),
+        thread_factory=_FakeThread,
+    )
+
+    controller.on_select_file()
+    controller.on_start_analysis()
+    _FakeThread.instances[0].run_target()
+    view.run_all_scheduled()
+
+    controller.on_start_analysis()
+    _FakeThread.instances[1].run_target()
+    view.run_all_scheduled()
+
+    assert len(view.presentations) == 2
+    assert view.presentations[0].confidence == "88%"
+    assert view.presentations[1].confidence == "-"
+    assert "Forecast nicht verfugbar" in view.presentations[1].forecast_text
+    assert view.clear_chart_calls == 0
+    assert len(view.chart_payloads) == 2
+
+
+def test_desktop_app_switching_complete_partial_complete_has_no_stale_values() -> None:
+    _FakeThread.instances.clear()
+    view = _FakeView(prompted_path=Path("C:/data/candles.csv"))
+    chart_data = ChartDataContract(
+        symbol="EURUSD",
+        generated_at=datetime(2026, 7, 21, 8, 0, tzinfo=UTC),
+        timeframe_data=(
+            TimeframeChartData(
+                timeframe="1h",
+                candles=(
+                    ChartCandle(
+                        opened_at=datetime(2026, 7, 21, 7, 0, tzinfo=UTC),
+                        open_price=Decimal("100"),
+                        high_price=Decimal("102"),
+                        low_price=Decimal("99"),
+                        close_price=Decimal("101"),
+                    ),
+                ),
+                swings=(),
+                pivots=(),
+            ),
+        ),
+        forecast_scenarios=(
+            ChartForecastScenario(
+                scenario_type="primary",
+                expected_next_wave="5",
+                confidence=Decimal("82"),
+                reasoning=("reason",),
+                projection_targets=(
+                    ChartProjectionTarget(
+                        priority=1,
+                        target_price=Decimal("110"),
+                        confidence=Decimal("82"),
+                        wave_degree="primary",
+                        description=None,
+                    ),
+                ),
+            ),
+        ),
+        fibonacci_projections=(
+            ChartFibonacciProjection(
+                level_ratio=Decimal("1.618"),
+                price=Decimal("110"),
+                direction="up",
+                reference_range=Decimal("10"),
+            ),
+        ),
+    )
+    complete_one = DesktopAnalysisPresentation(
+        status="Analyse abgeschlossen",
+        confidence="88%",
+        result_text="complete-1",
+        forecast_text="forecast-1",
+        projection_text="proj-1",
+        error_text=None,
+        chart_data=chart_data,
+    )
+    partial = DesktopAnalysisPresentation(
+        status="Analyse abgeschlossen - Teilergebnisse verfuegbar",
+        confidence="-",
+        result_text="partial",
+        forecast_text="Forecast nicht verfugbar - keine gueltige Elliott-Wellenstruktur.",
+        projection_text="Keine Fibonacci-Projektionen verfugbar.",
+        error_text=None,
+        chart_data=chart_data,
+    )
+    complete_two = DesktopAnalysisPresentation(
+        status="Analyse abgeschlossen",
+        confidence="91%",
+        result_text="complete-2",
+        forecast_text="forecast-2",
+        projection_text="proj-2",
+        error_text=None,
+        chart_data=chart_data,
+    )
+    queued = [complete_one, partial, complete_two]
+
+    controller = DesktopAnalysisController(
+        view=view,
+        run_analysis_presentation=lambda _path: queued.pop(0),
+        thread_factory=_FakeThread,
+    )
+
+    controller.on_select_file()
+    controller.on_start_analysis()
+    _FakeThread.instances[0].run_target()
+    view.run_all_scheduled()
+
+    controller.on_start_analysis()
+    _FakeThread.instances[1].run_target()
+    view.run_all_scheduled()
+
+    controller.on_start_analysis()
+    _FakeThread.instances[2].run_target()
+    view.run_all_scheduled()
+
+    assert len(view.presentations) == 3
+    assert view.presentations[0].confidence == "88%"
+    assert view.presentations[1].confidence == "-"
+    assert view.presentations[2].confidence == "91%"
+    assert "Forecast nicht verfugbar" in view.presentations[1].forecast_text
+    assert view.presentations[2].forecast_text == "forecast-2"
+    assert view.presentations[2].projection_text == "proj-2"
+    assert len(view.chart_payloads) == 3
+    assert view.clear_chart_calls == 0
+
+
+def test_present_csv_analysis_partial_path_runs_csv_and_analysis_once_and_skips_forecast(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    csv_path = Path("engineering/testdata/candlestick_patterns_e2e.csv")
+    counters = {"read_rows": 0, "analyze": 0, "forecast": 0}
+    analysis_ids: list[int] = []
+    forecast_analysis_ids: list[int] = []
+
+    original_read_rows = CsvMarketDataProvider._read_rows
+    original_analyze = AnalyzeMultiTimeframeService.analyze
+    original_generate = ForecastEngine.generate
+
+    def wrapped_read_rows(self: CsvMarketDataProvider) -> tuple[tuple[int, dict[str, str]], ...]:
+        counters["read_rows"] += 1
+        return original_read_rows(self)
+
+    def wrapped_analyze(
+        self: AnalyzeMultiTimeframeService, request: AnalysisRequest
+    ) -> AnalysisResponse:
+        counters["analyze"] += 1
+        result = original_analyze(self, request)
+        analysis_ids.append(id(result))
+        return result
+
+    def wrapped_generate(self: ForecastEngine, analysis: AnalysisResponse | None) -> ForecastResult:
+        counters["forecast"] += 1
+        forecast_analysis_ids.append(id(analysis))
+        return original_generate(self, analysis)
+
+    monkeypatch.setattr(CsvMarketDataProvider, "_read_rows", wrapped_read_rows)
+    monkeypatch.setattr(AnalyzeMultiTimeframeService, "analyze", wrapped_analyze)
+    monkeypatch.setattr(ForecastEngine, "generate", wrapped_generate)
+
+    presentation = present_csv_analysis(csv_path)
+
+    assert counters == {"read_rows": 1, "analyze": 1, "forecast": 0}
+    assert analysis_ids != []
+    assert forecast_analysis_ids == []
+    assert presentation.status == "Analyse abgeschlossen - Teilergebnisse verfuegbar"
+    assert presentation.error_text is None
+    assert presentation.chart_data is not None
+    assert "Stage: confluence" in presentation.result_text
+    assert presentation.confidence == "-"
+    assert "Forecast nicht verfugbar" in presentation.forecast_text
+    assert "Keine Fibonacci-Projektionen" in presentation.projection_text
+
+
+def test_present_csv_analysis_complete_path_runs_csv_analysis_and_forecast_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    csv_path = Path("engineering/testdata/swing_e2e_100.csv")
+    counters = {"read_rows": 0, "analyze": 0, "forecast": 0}
+    analysis_ids: list[int] = []
+    forecast_analysis_ids: list[int] = []
+
+    original_read_rows = CsvMarketDataProvider._read_rows
+    original_analyze = AnalyzeMultiTimeframeService.analyze
+    original_generate = ForecastEngine.generate
+
+    def wrapped_read_rows(self: CsvMarketDataProvider) -> tuple[tuple[int, dict[str, str]], ...]:
+        counters["read_rows"] += 1
+        return original_read_rows(self)
+
+    def wrapped_analyze(
+        self: AnalyzeMultiTimeframeService, request: AnalysisRequest
+    ) -> AnalysisResponse:
+        counters["analyze"] += 1
+        result = original_analyze(self, request)
+        analysis_ids.append(id(result))
+        return result
+
+    def wrapped_generate(self: ForecastEngine, analysis: AnalysisResponse | None) -> ForecastResult:
+        counters["forecast"] += 1
+        forecast_analysis_ids.append(id(analysis))
+        return original_generate(self, analysis)
+
+    monkeypatch.setattr(CsvMarketDataProvider, "_read_rows", wrapped_read_rows)
+    monkeypatch.setattr(AnalyzeMultiTimeframeService, "analyze", wrapped_analyze)
+    monkeypatch.setattr(ForecastEngine, "generate", wrapped_generate)
+
+    presentation = present_csv_analysis(csv_path)
+
+    assert counters == {"read_rows": 1, "analyze": 1, "forecast": 1}
+    assert len(analysis_ids) == 1
+    assert forecast_analysis_ids == analysis_ids
+    assert presentation.status == "Analyse abgeschlossen"
+    assert presentation.error_text is None
+    assert presentation.chart_data is not None
+    assert "%" in presentation.confidence
+    assert "Szenario:" in presentation.forecast_text
+
+
+def test_present_csv_analysis_unexpected_forecast_domain_error_is_not_masked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_generate = ForecastEngine.generate
+
+    def wrapped_generate(self: ForecastEngine, analysis: AnalysisResponse | None) -> ForecastResult:
+        _ = self
+        _ = analysis
+        message = "unexpected forecast failure"
+        raise DomainError(message)
+
+    monkeypatch.setattr(ForecastEngine, "generate", wrapped_generate)
+
+    presentation = present_csv_analysis(Path("engineering/testdata/swing_e2e_100.csv"))
+
+    assert presentation.status == "Analyse fehlgeschlagen"
+    assert presentation.error_text is not None
+    assert "Analyse konnte nicht ausgefuhrt werden" in presentation.error_text
+
+    monkeypatch.setattr(ForecastEngine, "generate", original_generate)
 
 
 def test_analysis_desktop_tk_app_methods_and_dialog_flow(

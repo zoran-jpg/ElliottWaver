@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+from elliottwaver.application.analysis import AnalysisStage
+from elliottwaver.domain.forecast import ForecastResult, ProjectionQuality
 
 if TYPE_CHECKING:
     from elliottwaver.application.analysis import (
@@ -11,7 +15,6 @@ if TYPE_CHECKING:
         AnalysisResponse,
         AnalyzeMultiTimeframeUseCase,
     )
-    from elliottwaver.domain.forecast import ForecastResult
 
 
 @runtime_checkable
@@ -43,3 +46,23 @@ class AnalysisApplication:
         analysis = self.analyze_use_case.analyze(request)
         forecast = self.forecast_engine.generate(analysis)
         return AnalysisApplicationResult(analysis=analysis, forecast=forecast)
+
+    def run_with_optional_forecast(self, request: AnalysisRequest) -> AnalysisApplicationResult:
+        """Run analysis once and generate forecast only when analysis is forecast-eligible."""
+
+        analysis = self.analyze_use_case.analyze(request)
+        if analysis.stage is not AnalysisStage.COMPLETED:
+            return AnalysisApplicationResult(analysis=analysis, forecast=_empty_forecast_result())
+
+        forecast = self.forecast_engine.generate(analysis)
+        return AnalysisApplicationResult(analysis=analysis, forecast=forecast)
+
+
+def _empty_forecast_result() -> ForecastResult:
+    return ForecastResult(
+        primary_scenario=None,
+        alternative_scenarios=(),
+        projection_quality=ProjectionQuality.LOW,
+        overall_confidence=Decimal("0"),
+        projections=(),
+    )

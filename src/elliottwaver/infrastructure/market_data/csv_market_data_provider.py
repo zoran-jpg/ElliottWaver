@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from csv import DictReader
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -41,6 +41,12 @@ class CsvMarketDataProvider(MarketDataProvider):
     """Load candles from a deterministic CSV source."""
 
     csv_path: Path
+    _cached_candles: tuple[Candle, ...] | None = field(
+        init=False,
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def infer_request_spec(self) -> CsvRequestSpec:
         """Infer symbol, timeframe, and UTC range for a single-instrument CSV file."""
@@ -97,13 +103,18 @@ class CsvMarketDataProvider(MarketDataProvider):
         return filtered[-maximum_candles:]
 
     def _load_all_candles(self) -> tuple[Candle, ...]:
+        if self._cached_candles is not None:
+            return self._cached_candles
+
         rows = self._read_rows()
-        return tuple(
+        candles = tuple(
             sorted(
                 (self._parse_candle(row=row, line_number=line_number) for line_number, row in rows),
                 key=lambda candle: candle.opened_at,
             )
         )
+        object.__setattr__(self, "_cached_candles", candles)
+        return candles
 
     def _read_rows(self) -> tuple[tuple[int, dict[str, str]], ...]:
         csv_file = Path(self.csv_path)

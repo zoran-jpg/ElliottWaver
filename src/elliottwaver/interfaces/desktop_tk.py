@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Protocol
 from elliottwaver.application import (
     AnalysisApplicationResult,
     AnalysisRequest,
+    AnalysisStage,
     ChartDataContract,
     TimeframeAnalysisRequest,
     build_chart_data_contract,
@@ -411,10 +412,17 @@ def infer_request_spec_from_csv(csv_path: Path) -> CsvAnalysisRequestSpec:
 def run_analysis_from_csv(csv_path: Path) -> AnalysisApplicationResult:
     """Run analysis and forecast for one CSV file using AnalysisApplication only."""
 
-    spec = infer_request_spec_from_csv(csv_path)
-    app = build_csv_analysis_application(csv_path=csv_path)
+    provider = CsvMarketDataProvider(csv_path=csv_path)
+    inferred = provider.infer_request_spec()
+    spec = CsvAnalysisRequestSpec(
+        symbol=inferred.symbol.value,
+        timeframe=inferred.timeframe.value,
+        start_time=inferred.start_time,
+        end_time=inferred.end_time,
+    )
+    app = build_csv_analysis_application(csv_path=csv_path, market_data_provider=provider)
     request = build_analysis_request(spec)
-    return app.run(request)
+    return app.run_with_optional_forecast(request)
 
 
 def present_csv_analysis(csv_path: Path) -> DesktopAnalysisPresentation:
@@ -439,8 +447,16 @@ def present_csv_analysis(csv_path: Path) -> DesktopAnalysisPresentation:
         chart_data = build_chart_data_contract(result)
     except (DomainError, OSError, ValueError):
         chart_data = None
+
+    status = "Analyse abgeschlossen"
+    if result.analysis.stage is not AnalysisStage.COMPLETED:
+        status = "Analyse abgeschlossen - Teilergebnisse verfuegbar"
+        confidence_text = "-"
+        forecast_text = "Forecast nicht verfugbar - keine gueltige Elliott-Wellenstruktur."
+        projection_text = "Keine Fibonacci-Projektionen verfugbar."
+
     return DesktopAnalysisPresentation(
-        status="Analyse abgeschlossen",
+        status=status,
         confidence=confidence_text,
         result_text=result_text,
         forecast_text=forecast_text,

@@ -10,6 +10,7 @@ import pytest
 
 from elliottwaver.application.chart_contract import (
     ChartCandle,
+    ChartCandlestickPattern,
     ChartDataContract,
     ChartFibonacciProjection,
     ChartForecastScenario,
@@ -795,6 +796,361 @@ def test_build_chart_render_model_selects_zones_deterministically() -> None:
     )
 
     assert first.support_resistance_zones == second.support_resistance_zones
+
+
+def test_build_chart_render_model_limits_and_sorts_candlestick_markers() -> None:
+    base = datetime(2026, 7, 21, 0, 0, tzinfo=UTC)
+    candles = tuple(
+        ChartCandle(
+            opened_at=base + timedelta(hours=index),
+            open_price=Decimal("100"),
+            high_price=Decimal("102"),
+            low_price=Decimal("98"),
+            close_price=Decimal("101"),
+        )
+        for index in range(20)
+    )
+    viewport = ChartViewport.initial(total_candles=len(candles), visible_count=20)
+    patterns = tuple(
+        ChartCandlestickPattern(
+            pattern_id=f"p-{index}",
+            pattern_type="bullish_engulfing",
+            short_label="ENG+",
+            direction="bullish",
+            started_at=base + timedelta(hours=index - 1),
+            ended_at=base + timedelta(hours=index),
+            confirmed_at=None,
+            confirmation_status="unknown",
+            candle_timestamps=(
+                base + timedelta(hours=index - 1),
+                base + timedelta(hours=index),
+            ),
+            price_anchor=Decimal("99"),
+            context="neutral",
+            reasons=("test",),
+            geometric_score=Decimal(str(index % 5)),
+        )
+        for index in range(20)
+    )
+
+    first = build_chart_render_model(
+        candles=candles,
+        width=900,
+        height=400,
+        viewport=viewport,
+        candlestick_patterns=patterns,
+    )
+    second = build_chart_render_model(
+        candles=candles,
+        width=900,
+        height=400,
+        viewport=viewport,
+        candlestick_patterns=patterns,
+    )
+
+    assert len(first.candlestick_patterns) <= 12
+    assert first.candlestick_patterns == second.candlestick_patterns
+
+
+def test_build_chart_render_model_places_pattern_marker_on_pattern_end_candle() -> None:
+    candles = _candles()
+    viewport = ChartViewport.initial(total_candles=len(candles), visible_count=3)
+    ended_at = datetime(2026, 7, 21, 1, 0, tzinfo=UTC)
+    patterns = (
+        ChartCandlestickPattern(
+            pattern_id="pat-1",
+            pattern_type="bullish_engulfing",
+            short_label="ENG+",
+            direction="bullish",
+            started_at=datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
+            ended_at=ended_at,
+            confirmed_at=None,
+            confirmation_status="unknown",
+            candle_timestamps=(
+                datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
+                ended_at,
+            ),
+            price_anchor=Decimal("101"),
+            context="neutral",
+            reasons=("rule",),
+            geometric_score=Decimal("0.9"),
+        ),
+    )
+
+    model = build_chart_render_model(
+        candles=candles,
+        width=900,
+        height=400,
+        viewport=viewport,
+        candlestick_patterns=patterns,
+    )
+
+    primitive_x = {primitive.opened_at: primitive.x_center for primitive in model.primitives}
+    assert model.candlestick_patterns[0].ended_at == ended_at
+    assert model.candlestick_patterns[0].x == primitive_x[ended_at]
+
+
+def test_build_chart_render_model_prioritizes_multi_candle_patterns_deterministically() -> None:
+    candles = _candles()
+    viewport = ChartViewport.initial(total_candles=len(candles), visible_count=3)
+    ended_at = datetime(2026, 7, 21, 2, 0, tzinfo=UTC)
+    patterns = (
+        ChartCandlestickPattern(
+            pattern_id="short",
+            pattern_type="hammer",
+            short_label="HAM",
+            direction="bullish",
+            started_at=ended_at,
+            ended_at=ended_at,
+            confirmed_at=None,
+            confirmation_status="unknown",
+            candle_timestamps=(ended_at,),
+            price_anchor=Decimal("101"),
+            context="neutral",
+            reasons=("r1",),
+            geometric_score=Decimal("0.95"),
+        ),
+        ChartCandlestickPattern(
+            pattern_id="long",
+            pattern_type="bullish_three_line_strike",
+            short_label="TLS+",
+            direction="bullish",
+            started_at=datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
+            ended_at=ended_at,
+            confirmed_at=None,
+            confirmation_status="unknown",
+            candle_timestamps=(
+                datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
+                datetime(2026, 7, 21, 1, 0, tzinfo=UTC),
+                ended_at,
+            ),
+            price_anchor=Decimal("100"),
+            context="neutral",
+            reasons=("r2",),
+            geometric_score=Decimal("0.70"),
+        ),
+    )
+
+    model = build_chart_render_model(
+        candles=candles,
+        width=900,
+        height=400,
+        viewport=viewport,
+        candlestick_patterns=patterns,
+    )
+
+    assert model.candlestick_patterns[0].label == "TLS++1"
+
+
+def test_chart_view_candlestick_pattern_toggle_is_independent_from_sr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("elliottwaver.interfaces.chart_tk._ensure_main_thread", lambda: None)
+    view = _view_stub(with_contract=True)
+    view._show_support_resistance_var = _FakeBoolVar(False)
+    view._show_candlestick_patterns_var = _FakeBoolVar(True)
+    pattern_end = datetime(2026, 7, 21, 2, 0, tzinfo=UTC)
+    view._contract = ChartDataContract(
+        symbol="EURUSD",
+        generated_at=datetime(2026, 7, 21, 8, 0, tzinfo=UTC),
+        timeframe_data=(
+            TimeframeChartData(
+                timeframe="1h",
+                candles=tuple(sorted(_candles(), key=lambda candle: candle.opened_at)),
+                swings=(),
+                pivots=(),
+                support_resistance_zones=(
+                    ChartSupportResistanceZone(
+                        zone_type="support",
+                        lower_price=Decimal("99"),
+                        upper_price=Decimal("101"),
+                        touch_count=2,
+                        first_timestamp=datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
+                        last_timestamp=datetime(2026, 7, 21, 2, 0, tzinfo=UTC),
+                        pivot_ids=("p1",),
+                    ),
+                ),
+                candlestick_patterns=(
+                    ChartCandlestickPattern(
+                        pattern_id="pat-1",
+                        pattern_type="bullish_engulfing",
+                        short_label="ENG+",
+                        direction="bullish",
+                        started_at=datetime(2026, 7, 21, 1, 0, tzinfo=UTC),
+                        ended_at=pattern_end,
+                        confirmed_at=None,
+                        confirmation_status="unknown",
+                        candle_timestamps=(
+                            datetime(2026, 7, 21, 1, 0, tzinfo=UTC),
+                            pattern_end,
+                        ),
+                        price_anchor=Decimal("100"),
+                        context="neutral",
+                        reasons=("test",),
+                        geometric_score=Decimal("0.8"),
+                    ),
+                ),
+            ),
+        ),
+        forecast_scenarios=(),
+        fibonacci_projections=(),
+    )
+
+    view._render()
+    assert any(text == "ENG+" for _, _, text in view._canvas.texts)
+
+    view._show_candlestick_patterns_var = _FakeBoolVar(False)
+    view._canvas.texts.clear()
+    view._render()
+    assert not any(text == "ENG+" for _, _, text in view._canvas.texts)
+
+
+def test_chart_view_render_does_not_recompute_patterns(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("elliottwaver.interfaces.chart_tk._ensure_main_thread", lambda: None)
+
+    def _raise_if_called(**_kwargs: object) -> tuple[object, ...]:
+        message = "pattern detection must not run during chart render"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(
+        "elliottwaver.application.chart_contract.detect_candlestick_patterns",
+        _raise_if_called,
+    )
+
+    view = _view_stub(with_contract=True)
+    view._show_candlestick_patterns_var = _FakeBoolVar(True)
+    view._contract = ChartDataContract(
+        symbol="EURUSD",
+        generated_at=datetime(2026, 7, 21, 8, 0, tzinfo=UTC),
+        timeframe_data=(
+            TimeframeChartData(
+                timeframe="1h",
+                candles=tuple(sorted(_candles(), key=lambda candle: candle.opened_at)),
+                swings=(),
+                pivots=(),
+                candlestick_patterns=(
+                    ChartCandlestickPattern(
+                        pattern_id="pat-1",
+                        pattern_type="bullish_engulfing",
+                        short_label="ENG+",
+                        direction="bullish",
+                        started_at=datetime(2026, 7, 21, 1, 0, tzinfo=UTC),
+                        ended_at=datetime(2026, 7, 21, 2, 0, tzinfo=UTC),
+                        confirmed_at=None,
+                        confirmation_status="unknown",
+                        candle_timestamps=(
+                            datetime(2026, 7, 21, 1, 0, tzinfo=UTC),
+                            datetime(2026, 7, 21, 2, 0, tzinfo=UTC),
+                        ),
+                        price_anchor=Decimal("100"),
+                        context="neutral",
+                        reasons=("test",),
+                        geometric_score=Decimal("0.8"),
+                    ),
+                ),
+            ),
+        ),
+        forecast_scenarios=(),
+        fibonacci_projections=(),
+    )
+
+    view._render()
+    view._render()
+
+    assert any(text == "ENG+" for _, _, text in view._canvas.texts)
+
+
+def test_chart_view_displays_candlestick_temporal_status_hint() -> None:
+    view = _view_stub(with_contract=True)
+    view._show_support_resistance_var = _FakeBoolVar(False)
+    view._show_candlestick_patterns_var = _FakeBoolVar(True)
+    pattern_end = datetime(2026, 7, 21, 2, 0, tzinfo=UTC)
+
+    unknown_contract = ChartDataContract(
+        symbol="EURUSD",
+        generated_at=datetime(2026, 7, 21, 8, 0, tzinfo=UTC),
+        timeframe_data=(
+            TimeframeChartData(
+                timeframe="1h",
+                candles=tuple(sorted(_candles(), key=lambda candle: candle.opened_at)),
+                swings=(),
+                pivots=(),
+                candlestick_patterns=(
+                    ChartCandlestickPattern(
+                        pattern_id="pat-1",
+                        pattern_type="bullish_engulfing",
+                        short_label="ENG+",
+                        direction="bullish",
+                        started_at=datetime(2026, 7, 21, 1, 0, tzinfo=UTC),
+                        ended_at=pattern_end,
+                        confirmed_at=None,
+                        confirmation_status="unknown",
+                        candle_timestamps=(
+                            datetime(2026, 7, 21, 1, 0, tzinfo=UTC),
+                            pattern_end,
+                        ),
+                        price_anchor=Decimal("100"),
+                        context="neutral",
+                        reasons=("test",),
+                        geometric_score=Decimal("0.8"),
+                    ),
+                ),
+            ),
+        ),
+        forecast_scenarios=(),
+        fibonacci_projections=(),
+    )
+    view._contract = unknown_contract
+
+    view._render()
+    assert any(
+        text
+        == "Kerzenformationen: geometrische Erkennung - zeitliche Bestaetigung nicht verfuegbar."
+        for _, _, text in view._canvas.texts
+    )
+
+    view._canvas.texts.clear()
+    confirmed_contract = ChartDataContract(
+        symbol="EURUSD",
+        generated_at=datetime(2026, 7, 21, 8, 0, tzinfo=UTC),
+        timeframe_data=(
+            TimeframeChartData(
+                timeframe="1h",
+                candles=tuple(sorted(_candles(), key=lambda candle: candle.opened_at)),
+                swings=(),
+                pivots=(),
+                candlestick_patterns=(
+                    ChartCandlestickPattern(
+                        pattern_id="pat-2",
+                        pattern_type="bullish_engulfing",
+                        short_label="ENG+",
+                        direction="bullish",
+                        started_at=datetime(2026, 7, 21, 1, 0, tzinfo=UTC),
+                        ended_at=pattern_end,
+                        confirmed_at=datetime(2026, 7, 21, 3, 0, tzinfo=UTC),
+                        confirmation_status="confirmed",
+                        candle_timestamps=(
+                            datetime(2026, 7, 21, 1, 0, tzinfo=UTC),
+                            pattern_end,
+                        ),
+                        price_anchor=Decimal("100"),
+                        context="neutral",
+                        reasons=("test",),
+                        geometric_score=Decimal("0.8"),
+                    ),
+                ),
+            ),
+        ),
+        forecast_scenarios=(),
+        fibonacci_projections=(),
+    )
+    view._contract = confirmed_contract
+
+    view._render()
+    assert any(
+        text == "Kerzenformationen: geometrische Erkennung - zeitlich bestaetigt."
+        for _, _, text in view._canvas.texts
+    )
 
 
 def test_build_chart_render_model_includes_primary_and_alternative_scenarios() -> None:
