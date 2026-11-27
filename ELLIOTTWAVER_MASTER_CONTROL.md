@@ -583,3 +583,43 @@ Klarstellung:
 - Softwarequalitaet ist kein Nachweis wirtschaftlicher Profitabilitaet.
 
 Ende der Master-Control-Datei.
+
+23. EP-DEF-11 Architekturabnahme und Abschlussstatus (2026-11-28)
+
+Status:
+- EP-DEF-11 ist fachlich architektonisch abgenommen.
+- DEF-EP11-001 bis DEF-EP11-004 sind abgeschlossen.
+- GitHub-Integration bleibt ausstehend und ist in diesem Stand nicht freigegeben.
+
+Abgenommener Qualitaetsstand EP-DEF-11:
+- 466 Tests bestanden.
+- Coverage: 92.73%.
+- Ruff Format Check: 144 Dateien bereits formatiert.
+- Ruff Check: PASS.
+- MyPy: PASS (143 Dateien).
+- 53 temporale und Pattern-Regressionstests: PASS.
+- Grenzfallmatrix A bis L: 12/12 PASS.
+- Startup-Smoke-Test: PASS.
+- Gemeldete Quality-Gate-Exit-Codes: 0.
+
+Fachlicher Kernumfang EP-DEF-11:
+- Gemeinsames unveraenderliches Temporal-Value-Object eingefuehrt und verankert.
+- Zeitliche Invarianten und Statussemantik unknown/pending/confirmed spezifiziert.
+- Strikte globale as_of-Validierung im Temporal-Value-Object umgesetzt.
+- Rueckwaertskompatibilitaet ueber bestehende Pattern-Importpfade erhalten.
+- Wiederverwendung der gemeinsamen Semantik durch die Pattern-Engine umgesetzt.
+
+Verbindliche Restgrenzen:
+- Die gemeinsame temporale Semantik allein garantiert noch keine durchgaengige Lookahead-Freiheit der produktiven Analysekette.
+- Produktive Integration in CSV-Provider, Pivot-/Swing-Erkennung, Support/Resistance und nachgelagerte Analysekomponenten bleibt Gegenstand weiterer explizit freizugebender Engineering Packages.
+- Es wird keine produktive Signal- oder Strategievalidierung aus EP-DEF-11 allein abgeleitet.
+
+Projektcontrolling EP-DEF-11 Korrekturzeiten:
+- DEF-EP11-001 bis DEF-EP11-003: Soll 15-30 Minuten, Ist 98 Sekunden.
+- DEF-EP11-004: Soll 5-10 Minuten, Ist 80 Sekunden.
+- Gesamt: Soll 20-40 Minuten, Ist 178 Sekunden.
+- Abweichung gegen Soll-Mittelwert: -90.1%.
+- Hinweis: Diese Zeiten sind ausschliesslich gemessene Copilot-Korrekturzeiten und nicht der vollstaendige Projektaufwand.
+
+Roadmap-Hinweis:
+- Roadmap V3.0 bleibt unveraendert.

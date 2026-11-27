@@ -9,6 +9,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from elliottwaver.core.shared.errors import DomainError
+from elliottwaver.domain.market import CandleTemporalSemantics, ConfirmationTimestampStatus
 
 if TYPE_CHECKING:
     from elliottwaver.domain.market import Candle
@@ -43,43 +44,6 @@ class CandlestickPatternContext(StrEnum):
     DOWNTREND = "downtrend"
     NEUTRAL = "neutral"
     UNKNOWN = "unknown"
-
-
-class ConfirmationTimestampStatus(StrEnum):
-    UNKNOWN = "unknown"
-    CONFIRMED = "confirmed"
-    PENDING = "pending"
-
-
-@dataclass(frozen=True, slots=True)
-class CandleTemporalSemantics:
-    opened_at: datetime
-    closed_at: datetime | None = None
-    available_at: datetime | None = None
-    is_closed: bool | None = None
-
-    def __post_init__(self) -> None:
-        _validate_utc_datetime(self.opened_at, "opened_at")
-        if self.closed_at is not None:
-            _validate_utc_datetime(self.closed_at, "closed_at")
-            if self.closed_at < self.opened_at:
-                message = "closed_at must not be before opened_at"
-                raise DomainError(message)
-
-        if self.available_at is not None:
-            _validate_utc_datetime(self.available_at, "available_at")
-
-        if self.is_closed is False and self.closed_at is not None:
-            message = "closed_at must be omitted when is_closed is False"
-            raise DomainError(message)
-
-        if (
-            self.closed_at is not None
-            and self.available_at is not None
-            and self.available_at < self.closed_at
-        ):
-            message = "available_at must not be before closed_at"
-            raise DomainError(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -784,35 +748,27 @@ class CandlestickPatternEngine:
         as_of: datetime | None,
     ) -> tuple[datetime | None, ConfirmationTimestampStatus]:
         confirmed_at: datetime | None = None
-        status = ConfirmationTimestampStatus.UNKNOWN
 
         if temporal_semantics_by_opened_at is None:
-            return confirmed_at, status
+            return confirmed_at, ConfirmationTimestampStatus.UNKNOWN
 
         semantics = [temporal_semantics_by_opened_at.get(candle.opened_at) for candle in candles]
         if any(item is None for item in semantics):
-            return confirmed_at, status
+            return confirmed_at, ConfirmationTimestampStatus.UNKNOWN
 
         typed_semantics = tuple(item for item in semantics if item is not None)
-        if any(item.is_closed is False for item in typed_semantics):
-            status = ConfirmationTimestampStatus.PENDING
-        elif (
-            any(item.is_closed is None for item in typed_semantics)
-            or any(item.closed_at is None or item.available_at is None for item in typed_semantics)
-            or as_of is None
-        ):
-            status = ConfirmationTimestampStatus.UNKNOWN
-        else:
-            required_confirmation_time = max(
-                item.available_at for item in typed_semantics if item.available_at is not None
-            )
-            if as_of < required_confirmation_time:
-                status = ConfirmationTimestampStatus.PENDING
-            else:
-                status = ConfirmationTimestampStatus.CONFIRMED
-                confirmed_at = required_confirmation_time
+        statuses = tuple(item.confirmation_status(as_of=as_of) for item in typed_semantics)
 
-        return confirmed_at, status
+        if any(status is ConfirmationTimestampStatus.PENDING for status in statuses):
+            return confirmed_at, ConfirmationTimestampStatus.PENDING
+
+        if any(status is ConfirmationTimestampStatus.UNKNOWN for status in statuses):
+            return confirmed_at, ConfirmationTimestampStatus.UNKNOWN
+
+        required_confirmation_time = max(
+            item.available_at for item in typed_semantics if item.available_at is not None
+        )
+        return required_confirmation_time, ConfirmationTimestampStatus.CONFIRMED
 
 
 def detect_candlestick_patterns(
@@ -902,6 +858,20 @@ def _compute_geometry(candle: Candle) -> CandleGeometry:
         direction=direction,
         zero_span=False,
     )
+
+
+__all__ = [
+    "CandleTemporalSemantics",
+    "CandlestickPattern",
+    "CandlestickPatternConfig",
+    "CandlestickPatternContext",
+    "CandlestickPatternDirection",
+    "CandlestickPatternEngine",
+    "CandlestickPatternType",
+    "ConfirmationTimestampStatus",
+    "detect_candlestick_patterns",
+    "detect_candlestick_patterns_with_temporal_confirmation",
+]
 
 
 def _doji_score(geometry: CandleGeometry) -> Decimal:

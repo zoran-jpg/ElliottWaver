@@ -1656,3 +1656,103 @@ Zurueckgestellte Pflichtanforderungen vor produktiver signalbasierter Konfluenzb
 
 Hinweis Master-Control-Strategietext:
 - Der bereits erstellte strategische Textvorschlag ist fuer spaetere Uebernahme vorgemerkt; in diesem Schritt wurden keine Master-Control-Dateien geaendert.
+
+## 26. EP-DEF-11 Architekturabnahme und Abschlussvorbereitung (2026-11-28)
+
+Status:
+- Fachliche Architekturabnahme fuer EP-DEF-11 ist erteilt.
+- DEF-EP11-001 bis DEF-EP11-004 sind fachlich abgeschlossen.
+- GitHub-Integration ist weiterhin nicht freigegeben.
+
+### 26.1 Zielsetzung EP-DEF-11
+
+Ziel war die Einfuehrung einer gemeinsamen, unveraenderlichen temporalen Semantik fuer Candle-Verfuegbarkeit in der Domain, inkl. klarer Statussemantik (unknown/pending/confirmed), validierter Zeitinvarianten und reproduzierbarer As-of-Bewertung.
+
+### 26.2 Technisches Ergebnis
+
+Gemeinsames Domain-VO:
+- `src/elliottwaver/domain/market/candle_availability.py`
+
+Temporale Invarianten:
+- `opened_at` muss UTC-aware sein.
+- `closed_at` (falls bekannt) muss UTC-aware sein und strikt nach `opened_at` liegen.
+- `available_at` (falls bekannt) muss UTC-aware sein.
+- `available_at` darf nicht vor `opened_at` liegen.
+- Falls `closed_at` bekannt ist, darf `available_at` nicht vor `closed_at` liegen.
+- `is_closed=False` bei bekanntem `closed_at` ist unzulaessig.
+
+Statussemantik:
+- `pending` bei laufender Candle (`is_closed=False`).
+- `unknown` bei fehlenden erforderlichen Metadaten oder `as_of=None` in nicht-laufenden Pfaden.
+- `confirmed` nur bei vollstaendigen Metadaten und `available_at <= as_of`.
+
+Strikte as_of-Validierung:
+- Jeder uebergebene `as_of`-Wert ungleich `None` wird vor jeglicher Statusrueckgabe auf UTC-Konformitaet geprueft.
+- Ungueltiges `as_of` fuehrt in allen relevanten Pfaden zu `DomainError`.
+
+Rueckwaertskompatibilitaet und Wiederverwendung:
+- Pattern-Engine nutzt die gemeinsame temporale Semantik.
+- Rueckwaertskompatible Imports fuer bestehende Pattern-Aufrufer bleiben erhalten.
+
+### 26.3 Behebung der vier Defekte
+
+- DEF-EP11-001: Invariante `available_at >= opened_at` durchgesetzt.
+- DEF-EP11-002: Regressionstest fuer `available_at == closed_at` ergaenzt.
+- DEF-EP11-003: Regressionstest fuer laufende Candle mit bekanntem `available_at` ergaenzt (bleibt `pending`).
+- DEF-EP11-004: Globale strikte `as_of`-Validierung umgesetzt; fruehe Rueckgabepfade validieren `as_of` ebenfalls.
+
+### 26.4 Quality-Gate-Ergebnisse (abgenommener Stand)
+
+- `python -m ruff format --check .` -> PASS (144 Dateien bereits formatiert)
+- `python -m ruff check .` -> PASS
+- `python -m mypy src tests` -> PASS (143 Dateien)
+- `python -m pytest --no-cov <temporale/pattern regression>` -> PASS (53 passed)
+- `python -m pytest tests/unit/test_main_entrypoint.py --no-cov` -> PASS
+- `python -m pytest` -> PASS (466 passed)
+- Coverage: 92.73% (Gate >= 90% bestanden)
+- Grenzfallmatrix A-L: 12/12 PASS
+- Gemeldete Exit-Codes: 0
+
+### 26.5 Verbleibende fachliche Grenzen
+
+Verbindliche Klarstellung:
+- Die gemeinsame temporale Semantik allein garantiert noch keine durchgaengige Lookahead-Freiheit der produktiven Analysekette.
+- Die produktive Integration in CSV-Provider, Pivot-/Swing-Erkennung, Support/Resistance und nachgelagerte Analysekomponenten bleibt Gegenstand weiterer explizit freizugebender Engineering Packages.
+- Es wird keine produktive Signal- oder Strategievalidierung aus EP-DEF-11 allein abgeleitet.
+
+### 26.6 Projektcontrolling (gemessene Copilot-Korrekturzeiten)
+
+- DEF-EP11-001 bis DEF-EP11-003:
+	- Soll: 15-30 Minuten
+	- Ist: 98 Sekunden
+- DEF-EP11-004:
+	- Soll: 5-10 Minuten
+	- Ist: 80 Sekunden
+- Gesamt:
+	- Soll: 20-40 Minuten
+	- Ist: 178 Sekunden
+	- Abweichung gegen Soll-Mittelwert: -90.1%
+
+Hinweis:
+- Diese Zeiten sind ausschliesslich gemessene Copilot-Korrekturzeiten und nicht der vollstaendige Projektaufwand.
+- Roadmap V3.0 bleibt unveraendert.
+
+### 26.7 EP-DEF-11 Datei-Allowlist fuer isolierte Git-Integration
+
+Tatsaechlich zu EP-DEF-11 gehoerende Dateien:
+- `src/elliottwaver/domain/market/candle_availability.py`
+- `src/elliottwaver/domain/market/__init__.py`
+- `src/elliottwaver/domain/patterns/candlestick_patterns.py`
+- `src/elliottwaver/domain/patterns/__init__.py`
+- `tests/unit/domain/market/test_candle_availability.py`
+- `tests/unit/domain/patterns/test_candlestick_patterns.py`
+
+### 26.8 Auszuschliessende lokale Dateien
+
+Explizit auszuschliessen:
+- `tests/unit/application/test_context_service.py`
+- `tests/unit/domain/context/test_elliott_context.py`
+- `.github/ELLIOTTWAVER_MASTER_CONTROL.md`
+- `test_market_data.csv`
+- alle Dateien unter `engineering/_audit/`
+- alle paketfremden lokalen Dateien ausserhalb der EP-DEF-11-Allowlist
