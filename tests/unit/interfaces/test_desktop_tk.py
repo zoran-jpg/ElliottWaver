@@ -287,6 +287,21 @@ def test_present_csv_analysis_e2e_like_pipeline_to_presenter(tmp_path: Path) -> 
     assert "Stage:" in presentation.result_text
 
 
+def test_present_csv_analysis_populates_support_resistance_zones_from_engineering_fixture() -> None:
+    fixture = Path(__file__).resolve().parents[3] / "engineering" / "testdata" / "swing_e2e_100.csv"
+
+    presentation = present_csv_analysis(fixture)
+
+    assert presentation.status == "Analyse abgeschlossen"
+    assert presentation.chart_data is not None
+    timeframe = presentation.chart_data.timeframe_data[0]
+    assert len(timeframe.support_resistance_zones) > 0
+    assert len(timeframe.support_resistance_zones) > 10
+    assert all(
+        zone.zone_type in {"support", "resistance"} for zone in timeframe.support_resistance_zones
+    )
+
+
 def test_run_analysis_from_csv_reports_incomplete_analysis_as_domain_error(
     tmp_path: Path,
 ) -> None:
