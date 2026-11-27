@@ -7,7 +7,16 @@ import pytest
 
 from elliottwaver.core.market import Symbol, Timeframe
 from elliottwaver.core.shared.errors import DomainError
-from elliottwaver.domain.market import Candle, Price
+from elliottwaver.domain.market import (
+    Candle,
+    Price,
+)
+from elliottwaver.domain.market import (
+    CandleTemporalSemantics as MarketCandleTemporalSemantics,
+)
+from elliottwaver.domain.market import (
+    ConfirmationTimestampStatus as MarketConfirmationTimestampStatus,
+)
 from elliottwaver.domain.patterns import (
     CandlestickPatternEngine,
     CandlestickPatternType,
@@ -344,6 +353,11 @@ def test_detect_candlestick_patterns_sets_unknown_confirmation_timestamp_semanti
     assert patterns[0].confirmation_status.value == "unknown"
 
 
+def test_candle_temporal_semantics_import_path_is_backward_compatible() -> None:
+    assert CandleTemporalSemantics is MarketCandleTemporalSemantics
+    assert ConfirmationTimestampStatus is MarketConfirmationTimestampStatus
+
+
 def test_detect_candlestick_patterns_confirms_when_temporal_semantics_are_known() -> None:
     candles = (
         _candle(index=0, open_price="100", high_price="101", low_price="97", close_price="98"),
@@ -402,6 +416,43 @@ def test_detect_candlestick_patterns_temporal_semantics_respects_as_of_analysis_
 
     assert patterns[0].confirmation_status is ConfirmationTimestampStatus.PENDING
     assert patterns[0].confirmed_at is None
+
+
+def test_detect_candlestick_patterns_temporal_semantics_is_prefix_invariant_with_fixed_as_of() -> (
+    None
+):
+    candles = (
+        _candle(index=0, open_price="100", high_price="101", low_price="97", close_price="98"),
+        _candle(index=1, open_price="97", high_price="102", low_price="96", close_price="101"),
+        _candle(index=2, open_price="101", high_price="104", low_price="100", close_price="103"),
+        _candle(index=3, open_price="103", high_price="105", low_price="101", close_price="102"),
+    )
+    semantics = {
+        candle.opened_at: CandleTemporalSemantics(
+            opened_at=candle.opened_at,
+            closed_at=candle.opened_at + timedelta(hours=1),
+            available_at=candle.opened_at + timedelta(hours=1, minutes=5),
+            is_closed=True,
+        )
+        for candle in candles
+    }
+    prefix = candles[:2]
+    cutoff = prefix[-1].opened_at
+    fixed_as_of = prefix[-1].opened_at + timedelta(hours=1, minutes=10)
+
+    prefix_patterns = detect_candlestick_patterns_with_temporal_confirmation(
+        candles=prefix,
+        temporal_semantics_by_opened_at=semantics,
+        as_of=fixed_as_of,
+    )
+    full_patterns = detect_candlestick_patterns_with_temporal_confirmation(
+        candles=candles,
+        temporal_semantics_by_opened_at=semantics,
+        as_of=fixed_as_of,
+    )
+    full_prefix = tuple(pattern for pattern in full_patterns if pattern.ended_at <= cutoff)
+
+    assert prefix_patterns == full_prefix
 
 
 def test_detect_candlestick_patterns_temporal_semantics_keeps_unknown_when_data_is_incomplete() -> (
