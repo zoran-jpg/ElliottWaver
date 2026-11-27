@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from itertools import combinations
 from typing import Any
 
 import pytest
@@ -14,6 +15,7 @@ from elliottwaver.application.chart_contract import (
     ChartForecastScenario,
     ChartPivot,
     ChartProjectionTarget,
+    ChartSupportResistanceZone,
     ChartSwing,
     ChartWave,
     ChartWaveAnchor,
@@ -78,6 +80,7 @@ class _FakeCanvas:
     rectangles: list[tuple[float, float, float, float]]
     ovals: list[tuple[float, float, float, float]]
     polygons: list[tuple[float, ...]]
+    operations: list[str]
     width: int = 900
     height: int = 420
 
@@ -88,6 +91,7 @@ class _FakeCanvas:
         self.rectangles = []
         self.ovals = []
         self.polygons = []
+        self.operations = []
         self.width = width
         self.height = height
 
@@ -104,9 +108,11 @@ class _FakeCanvas:
         anchor: str,
     ) -> None:
         _ = fill, anchor
+        self.operations.append("text")
         self.texts.append((x, y, text))
 
     def create_line(self, x1: float, y1: float, x2: float, y2: float, **_kwargs: object) -> None:
+        self.operations.append("line")
         self.lines.append((x1, y1, x2, y2))
 
     def create_rectangle(
@@ -117,6 +123,10 @@ class _FakeCanvas:
         y2: float,
         **_kwargs: object,
     ) -> None:
+        if "stipple" in _kwargs:
+            self.operations.append("zone-rectangle")
+        else:
+            self.operations.append("candle-rectangle")
         self.rectangles.append((x1, y1, x2, y2))
 
     def create_oval(
@@ -127,9 +137,11 @@ class _FakeCanvas:
         y2: float,
         **_kwargs: object,
     ) -> None:
+        self.operations.append("oval")
         self.ovals.append((x1, y1, x2, y2))
 
     def create_polygon(self, *points: float, **_kwargs: object) -> None:
+        self.operations.append("polygon")
         self.polygons.append(tuple(points))
 
     def winfo_width(self) -> int:
@@ -142,6 +154,14 @@ class _FakeCanvas:
 @dataclass(frozen=True, slots=True)
 class _MouseEvent:
     delta: int
+
+
+@dataclass(frozen=True, slots=True)
+class _FakeBoolVar:
+    value: bool
+
+    def get(self) -> bool:
+        return self.value
 
 
 def _view_stub(*, with_contract: bool) -> Any:
@@ -531,6 +551,252 @@ def test_build_chart_render_model_maps_fibonacci_targets_in_visible_price_range(
     assert "104.00" in model.fibonacci_lines[0].label
 
 
+def test_build_chart_render_model_maps_support_resistance_zones_in_visible_range() -> None:
+    candles = _candles()
+    viewport = ChartViewport.initial(total_candles=len(candles), visible_count=3)
+    zones = (
+        ChartSupportResistanceZone(
+            zone_type="support",
+            lower_price=Decimal("99"),
+            upper_price=Decimal("101"),
+            touch_count=2,
+            first_timestamp=datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
+            last_timestamp=datetime(2026, 7, 21, 2, 0, tzinfo=UTC),
+            pivot_ids=("p1", "p3"),
+        ),
+        ChartSupportResistanceZone(
+            zone_type="resistance",
+            lower_price=Decimal("500"),
+            upper_price=Decimal("510"),
+            touch_count=1,
+            first_timestamp=datetime(2026, 7, 21, 2, 0, tzinfo=UTC),
+            last_timestamp=datetime(2026, 7, 21, 2, 0, tzinfo=UTC),
+            pivot_ids=("p2",),
+        ),
+    )
+
+    model = build_chart_render_model(
+        candles=candles,
+        width=900,
+        height=400,
+        viewport=viewport,
+        support_resistance_zones=zones,
+    )
+
+    assert len(model.support_resistance_zones) == 1
+    assert model.support_resistance_zones[0].zone_type == "support"
+    assert model.support_resistance_zones[0].touch_count == 2
+    assert model.support_resistance_zones[0].label is None
+
+
+def test_build_chart_render_model_limits_visible_zones_per_type_to_default_3() -> None:
+    candles = _candles()
+    viewport = ChartViewport.initial(total_candles=len(candles), visible_count=3)
+    zones = tuple(
+        ChartSupportResistanceZone(
+            zone_type="support" if index < 7 else "resistance",
+            lower_price=Decimal(str(95 + index)),
+            upper_price=Decimal(str(96 + index)),
+            touch_count=index + 1,
+            first_timestamp=datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
+            last_timestamp=datetime(2026, 7, 21, 2, 0, tzinfo=UTC),
+            pivot_ids=(f"p{index}",),
+        )
+        for index in range(14)
+    )
+
+    model = build_chart_render_model(
+        candles=candles,
+        width=900,
+        height=400,
+        viewport=viewport,
+        support_resistance_zones=zones,
+    )
+
+    assert len(zones) == 14
+    supports = [zone for zone in model.support_resistance_zones if zone.zone_type == "support"]
+    resistances = [
+        zone for zone in model.support_resistance_zones if zone.zone_type == "resistance"
+    ]
+    assert len(supports) <= 3
+    assert len(resistances) <= 3
+
+
+def test_build_chart_render_model_supports_configurable_limit_up_to_5_per_type() -> None:
+    candles = _candles()
+    viewport = ChartViewport.initial(total_candles=len(candles), visible_count=3)
+    zones = tuple(
+        ChartSupportResistanceZone(
+            zone_type="support" if index < 8 else "resistance",
+            lower_price=Decimal(str(95 + index)),
+            upper_price=Decimal(str(96 + index)),
+            touch_count=index + 1,
+            first_timestamp=datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
+            last_timestamp=datetime(2026, 7, 21, 2, 0, tzinfo=UTC),
+            pivot_ids=(f"p{index}",),
+        )
+        for index in range(16)
+    )
+
+    model = build_chart_render_model(
+        candles=candles,
+        width=900,
+        height=400,
+        viewport=viewport,
+        support_resistance_zones=zones,
+        max_visible_support_zones=5,
+        max_visible_resistance_zones=5,
+    )
+
+    supports = [zone for zone in model.support_resistance_zones if zone.zone_type == "support"]
+    resistances = [
+        zone for zone in model.support_resistance_zones if zone.zone_type == "resistance"
+    ]
+    assert len(supports) <= 5
+    assert len(resistances) <= 5
+
+
+def test_build_chart_render_model_filters_visually_overlapping_zones() -> None:
+    candles = _candles()
+    viewport = ChartViewport.initial(total_candles=len(candles), visible_count=3)
+    zones = (
+        ChartSupportResistanceZone(
+            zone_type="support",
+            lower_price=Decimal("100.00"),
+            upper_price=Decimal("101.00"),
+            touch_count=5,
+            first_timestamp=datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
+            last_timestamp=datetime(2026, 7, 21, 2, 0, tzinfo=UTC),
+            pivot_ids=("s1",),
+        ),
+        ChartSupportResistanceZone(
+            zone_type="support",
+            lower_price=Decimal("100.10"),
+            upper_price=Decimal("101.10"),
+            touch_count=4,
+            first_timestamp=datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
+            last_timestamp=datetime(2026, 7, 21, 2, 0, tzinfo=UTC),
+            pivot_ids=("s2",),
+        ),
+        ChartSupportResistanceZone(
+            zone_type="support",
+            lower_price=Decimal("100.20"),
+            upper_price=Decimal("101.20"),
+            touch_count=3,
+            first_timestamp=datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
+            last_timestamp=datetime(2026, 7, 21, 2, 0, tzinfo=UTC),
+            pivot_ids=("s3",),
+        ),
+    )
+
+    model = build_chart_render_model(
+        candles=candles,
+        width=900,
+        height=400,
+        viewport=viewport,
+        support_resistance_zones=zones,
+        max_visible_support_zones=3,
+    )
+
+    supports = [zone for zone in model.support_resistance_zones if zone.zone_type == "support"]
+    assert len(supports) < 3
+
+
+def test_build_chart_render_model_never_displays_strongly_overlapping_same_type_zones() -> None:
+    candles = _candles()
+    viewport = ChartViewport.initial(total_candles=len(candles), visible_count=3)
+    zones = (
+        ChartSupportResistanceZone(
+            zone_type="resistance",
+            lower_price=Decimal("106.00"),
+            upper_price=Decimal("107.00"),
+            touch_count=7,
+            first_timestamp=datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
+            last_timestamp=datetime(2026, 7, 21, 2, 0, tzinfo=UTC),
+            pivot_ids=("r1",),
+        ),
+        ChartSupportResistanceZone(
+            zone_type="resistance",
+            lower_price=Decimal("106.10"),
+            upper_price=Decimal("107.10"),
+            touch_count=6,
+            first_timestamp=datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
+            last_timestamp=datetime(2026, 7, 21, 2, 0, tzinfo=UTC),
+            pivot_ids=("r2",),
+        ),
+        ChartSupportResistanceZone(
+            zone_type="resistance",
+            lower_price=Decimal("107.80"),
+            upper_price=Decimal("108.20"),
+            touch_count=5,
+            first_timestamp=datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
+            last_timestamp=datetime(2026, 7, 21, 2, 0, tzinfo=UTC),
+            pivot_ids=("r3",),
+        ),
+    )
+
+    model = build_chart_render_model(
+        candles=candles,
+        width=900,
+        height=400,
+        viewport=viewport,
+        support_resistance_zones=zones,
+        max_visible_resistance_zones=5,
+    )
+
+    resistances = [
+        zone for zone in model.support_resistance_zones if zone.zone_type == "resistance"
+    ]
+    for left, right in combinations(resistances, 2):
+        left_height = max(left.y_bottom - left.y_top, 1.0)
+        right_height = max(right.y_bottom - right.y_top, 1.0)
+        overlap = max(0.0, min(left.y_bottom, right.y_bottom) - max(left.y_top, right.y_top))
+        overlap_ratio = overlap / min(left_height, right_height)
+        assert overlap_ratio < 0.6
+
+
+def test_build_chart_render_model_selects_zones_deterministically() -> None:
+    candles = _candles()
+    viewport = ChartViewport.initial(total_candles=len(candles), visible_count=3)
+    zones = (
+        ChartSupportResistanceZone(
+            zone_type="support",
+            lower_price=Decimal("99"),
+            upper_price=Decimal("100"),
+            touch_count=3,
+            first_timestamp=datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
+            last_timestamp=datetime(2026, 7, 21, 2, 0, tzinfo=UTC),
+            pivot_ids=("a",),
+        ),
+        ChartSupportResistanceZone(
+            zone_type="support",
+            lower_price=Decimal("98"),
+            upper_price=Decimal("99"),
+            touch_count=3,
+            first_timestamp=datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
+            last_timestamp=datetime(2026, 7, 21, 2, 0, tzinfo=UTC),
+            pivot_ids=("b",),
+        ),
+    )
+
+    first = build_chart_render_model(
+        candles=candles,
+        width=900,
+        height=400,
+        viewport=viewport,
+        support_resistance_zones=zones,
+    )
+    second = build_chart_render_model(
+        candles=candles,
+        width=900,
+        height=400,
+        viewport=viewport,
+        support_resistance_zones=zones,
+    )
+
+    assert first.support_resistance_zones == second.support_resistance_zones
+
+
 def test_build_chart_render_model_includes_primary_and_alternative_scenarios() -> None:
     candles = _candles()
     viewport = ChartViewport.initial(total_candles=len(candles), visible_count=3)
@@ -754,6 +1020,132 @@ def test_chart_view_render_draws_overlay_shapes(monkeypatch: pytest.MonkeyPatch)
 
     assert len(view._canvas.ovals) == 4
     assert len(view._canvas.polygons) == 3
+
+
+def test_chart_view_support_resistance_toggle_and_viewport_actions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("elliottwaver.interfaces.chart_tk._ensure_main_thread", lambda: None)
+    view = _view_stub(with_contract=True)
+    view._show_support_resistance_var = _FakeBoolVar(True)
+    view._contract = ChartDataContract(
+        symbol="EURUSD",
+        generated_at=datetime(2026, 7, 21, 8, 0, tzinfo=UTC),
+        timeframe_data=(
+            TimeframeChartData(
+                timeframe="1h",
+                candles=tuple(sorted(_candles(), key=lambda candle: candle.opened_at)),
+                swings=(),
+                pivots=(),
+                support_resistance_zones=(
+                    ChartSupportResistanceZone(
+                        zone_type="support",
+                        lower_price=Decimal("99"),
+                        upper_price=Decimal("101"),
+                        touch_count=2,
+                        first_timestamp=datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
+                        last_timestamp=datetime(2026, 7, 21, 2, 0, tzinfo=UTC),
+                        pivot_ids=("p1", "p3"),
+                    ),
+                ),
+            ),
+        ),
+        forecast_scenarios=(),
+        fibonacci_projections=(),
+    )
+
+    view._render()
+    with_zones = len(view._canvas.rectangles)
+
+    view._show_support_resistance_var = _FakeBoolVar(False)
+    view._canvas.rectangles.clear()
+    view._render()
+    without_zones = len(view._canvas.rectangles)
+
+    view.zoom_in()
+    view.zoom_out()
+    view.pan_left()
+    view.pan_right()
+    view.reset_view()
+
+    assert with_zones == len(_candles()) + 1
+    assert without_zones == len(_candles())
+
+
+def test_chart_view_hides_support_resistance_labels_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("elliottwaver.interfaces.chart_tk._ensure_main_thread", lambda: None)
+    view = _view_stub(with_contract=True)
+    view._show_support_resistance_var = _FakeBoolVar(True)
+    view._contract = ChartDataContract(
+        symbol="EURUSD",
+        generated_at=datetime(2026, 7, 21, 8, 0, tzinfo=UTC),
+        timeframe_data=(
+            TimeframeChartData(
+                timeframe="1h",
+                candles=tuple(sorted(_candles(), key=lambda candle: candle.opened_at)),
+                swings=(),
+                pivots=(),
+                support_resistance_zones=(
+                    ChartSupportResistanceZone(
+                        zone_type="support",
+                        lower_price=Decimal("99"),
+                        upper_price=Decimal("101"),
+                        touch_count=2,
+                        first_timestamp=datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
+                        last_timestamp=datetime(2026, 7, 21, 2, 0, tzinfo=UTC),
+                        pivot_ids=("p1", "p3"),
+                    ),
+                ),
+            ),
+        ),
+        forecast_scenarios=(),
+        fibonacci_projections=(),
+    )
+
+    view._render()
+
+    assert not any(text.startswith(("SUP x", "RES x")) for _, _, text in view._canvas.texts)
+
+
+def test_chart_view_draws_zones_behind_candles(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("elliottwaver.interfaces.chart_tk._ensure_main_thread", lambda: None)
+    view = _view_stub(with_contract=True)
+    view._show_support_resistance_var = _FakeBoolVar(True)
+    view._contract = ChartDataContract(
+        symbol="EURUSD",
+        generated_at=datetime(2026, 7, 21, 8, 0, tzinfo=UTC),
+        timeframe_data=(
+            TimeframeChartData(
+                timeframe="1h",
+                candles=tuple(sorted(_candles(), key=lambda candle: candle.opened_at)),
+                swings=(),
+                pivots=(),
+                support_resistance_zones=(
+                    ChartSupportResistanceZone(
+                        zone_type="support",
+                        lower_price=Decimal("99"),
+                        upper_price=Decimal("101"),
+                        touch_count=2,
+                        first_timestamp=datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
+                        last_timestamp=datetime(2026, 7, 21, 2, 0, tzinfo=UTC),
+                        pivot_ids=("p1", "p3"),
+                    ),
+                ),
+            ),
+        ),
+        forecast_scenarios=(),
+        fibonacci_projections=(),
+    )
+
+    view._render()
+
+    assert "zone-rectangle" in view._canvas.operations
+    assert "candle-rectangle" in view._canvas.operations
+    assert view._canvas.operations.index("zone-rectangle") < view._canvas.operations.index(
+        "candle-rectangle"
+    )
 
 
 def test_chart_view_mouse_wheel_routes_to_zoom_actions() -> None:

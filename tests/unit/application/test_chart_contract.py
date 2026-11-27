@@ -159,6 +159,16 @@ def test_build_chart_data_contract_maps_and_orders_data_deterministically() -> N
         datetime(2026, 7, 20, 2, 0, tzinfo=UTC),
     ]
     assert [pivot.pivot_type for pivot in timeframe_data.pivots] == ["low", "high", "low"]
+    assert [zone.zone_type for zone in timeframe_data.support_resistance_zones] == [
+        "support",
+        "resistance",
+    ]
+    support_zone = timeframe_data.support_resistance_zones[0]
+    resistance_zone = timeframe_data.support_resistance_zones[1]
+    assert support_zone.lower_price == Decimal("99")
+    assert support_zone.upper_price == Decimal("100")
+    assert resistance_zone.lower_price == Decimal("109")
+    assert resistance_zone.upper_price == Decimal("114")
 
     assert len(contract.forecast_scenarios) >= 1
     assert contract.forecast_scenarios[0].scenario_type == "primary"

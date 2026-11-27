@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from elliottwaver.application.support_resistance import derive_support_resistance_zones
 from elliottwaver.core.shared.errors import DomainError
 from elliottwaver.domain.market.wave import WaveType
 
@@ -112,6 +113,19 @@ class ChartFibonacciProjection:
 
 
 @dataclass(frozen=True, slots=True)
+class ChartSupportResistanceZone:
+    """Immutable support/resistance zone payload for chart overlays."""
+
+    zone_type: str
+    lower_price: Decimal
+    upper_price: Decimal
+    touch_count: int
+    first_timestamp: datetime
+    last_timestamp: datetime
+    pivot_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class TimeframeChartData:
     """Immutable chart payload for one analyzed timeframe."""
 
@@ -119,6 +133,7 @@ class TimeframeChartData:
     candles: tuple[ChartCandle, ...]
     swings: tuple[ChartSwing, ...]
     pivots: tuple[ChartPivot, ...]
+    support_resistance_zones: tuple[ChartSupportResistanceZone, ...] = ()
     selected_waves: tuple[ChartWave, ...] = ()
 
 
@@ -202,13 +217,39 @@ def _map_timeframe_result(timeframe_result: TimeframeAnalysisResult) -> Timefram
         )
     )
     pivots = _map_pivots(timeframe_result.prepared_swings)
+    support_resistance_zones = _map_support_resistance_zones(
+        timeframe_result=timeframe_result,
+    )
     selected_waves = _map_selected_waves(timeframe_result.selection_result)
     return TimeframeChartData(
         timeframe=request.timeframe.value,
         candles=candles,
         swings=swings,
         pivots=pivots,
+        support_resistance_zones=support_resistance_zones,
         selected_waves=selected_waves,
+    )
+
+
+def _map_support_resistance_zones(
+    *,
+    timeframe_result: TimeframeAnalysisResult,
+) -> tuple[ChartSupportResistanceZone, ...]:
+    zones = derive_support_resistance_zones(
+        candles=timeframe_result.candles,
+        swings=timeframe_result.prepared_swings,
+    )
+    return tuple(
+        ChartSupportResistanceZone(
+            zone_type=zone.zone_type,
+            lower_price=zone.lower_price,
+            upper_price=zone.upper_price,
+            touch_count=zone.touch_count,
+            first_timestamp=zone.first_timestamp,
+            last_timestamp=zone.last_timestamp,
+            pivot_ids=zone.pivot_ids,
+        )
+        for zone in zones
     )
 
 

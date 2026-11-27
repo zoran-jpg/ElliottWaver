@@ -1145,3 +1145,193 @@ Erkannte Risiken:
 - Working tree weiterhin bewusst dirty; daher nur streng explizites Staging gegen die obige 75-Pfade-Allowlist.
 - Zeilenendungswarnungen (CRLF/LF) koennen Diffs aufblaehen, sind aber durch dateigenaue Allowlist beherrschbar.
 - GitHub-Actions-Live-Gate weiterhin OFFEN bis zu einem echten gehosteten Matrix-Lauf.
+
+## 23. EP-08 Kontrollierter lokaler Release-Commit
+
+Commit-Status:
+- Lokaler Commit erstellt auf Branch `release/ep08-preflight`.
+- Commit: `2a5ab9b`
+- Nachricht: `EP-08 validated integration and release candidate`
+- Umfang: 75 Dateien, exakt gemaess Allowlist.
+
+Index-Sicherheitspruefung vor Commit:
+- Staged-Pfade gegen Allowlist: exakt (keine fehlenden, keine zusaetzlichen).
+- Geschuetzte Tests ausgeschlossen:
+	- `tests/unit/application/test_context_service.py`
+	- `tests/unit/domain/context/test_elliott_context.py`
+- Master-Control-Kopien ausgeschlossen:
+	- `ELLIOTTWAVER_MASTER_CONTROL.md`
+	- `.github/ELLIOTTWAVER_MASTER_CONTROL.md`
+- Lokale Artefakte ausgeschlossen (u. a. Wheel-Venvs, lokale Testdatei).
+
+Hinweis:
+- Diese Handover-Notiz wurde nach dem Commit erstellt und ist bewusst nicht als zweiter Commit aufgenommen.
+
+## 24. EP-09 Abschluss - Support/Resistance im bestehenden Chart
+
+Status:
+- Fachliche EP-09-Abnahme (technisch): PASS
+- Offene visuelle Product-Owner-Abnahme unter Windows: AUSSTEHEND
+
+Implementierte Funktionen:
+- Deterministische Support-/Resistance-Zonenableitung aus bestaetigten Swing-Pivots.
+- Mapping der Zonen in den unveraenderlichen Chart-Contract je Timeframe.
+- Darstellung als dezente horizontalen Zonenbaender im bestehenden Candlestick-Chart.
+- Ein-/Ausblendung ueber Checkbox `S/R Zonen` (Standardzustand: EIN).
+- Kompatibilitaet mit bestehenden Navigationen (`+`, `-`, `<`, `>`, `Reset`).
+- Bestehende Elliott-Wellen-, Fibonacci- und Szenario-Overlays bleiben aktiv.
+
+Verwendete Berechnungsregeln:
+- Eingaben fuer Zonen stammen ausschliesslich aus `prepared_swings` (damit nur bestaetigte Pivot-Punkte).
+- Keine Lookahead-Nutzung ueber unbestaetigte Rohkerzen-Pivots; nicht in Swings enthaltene Pivots werden nicht verarbeitet.
+- Support-Band: von Kerzentief bis Kerzenkoerper-Unterkante (`min(open, close)`).
+- Resistance-Band: von Kerzenkoerper-Oberkante (`max(open, close)`) bis Kerzenhoch.
+- Deduplizierung ueber Pivot-ID (ein Pivot erzeugt maximal einen Rohzonenbeitrag).
+- Zusammenfassen benachbarter/ueberlappender Zonen pro Typ deterministisch (sortierte Aggregation, stabile Pivot-ID-Menge).
+- Renderer positioniert Zonen ueber dieselbe Preis-Mapping-Funktion wie Candles/Overlays (konsistente Preisachse).
+
+Geaenderte EP-09-Dateien:
+- `src/elliottwaver/application/support_resistance.py`
+- `src/elliottwaver/application/chart_contract.py`
+- `src/elliottwaver/interfaces/chart_tk.py`
+- `tests/unit/application/test_support_resistance.py`
+- `tests/unit/application/test_chart_contract.py`
+- `tests/unit/interfaces/test_chart_tk.py`
+- `tests/unit/interfaces/test_desktop_tk.py`
+
+Testergebnisse (aktueller Lauf):
+- `python -m ruff format --check .` -> PASS (`139 files already formatted`)
+- `python -m ruff check .` -> PASS
+- `python -m mypy src tests` -> PASS (`no issues found in 138 source files`)
+- `python -m pytest` -> PASS (`386 passed`)
+- Coverage: `92.58%` (Gate >= 90% bestanden)
+
+Separater Integrationstest mit Engineering-Fixture:
+- Kommando: `present_csv_analysis(Path("engineering/testdata/swing_e2e_100.csv"))` (direkter Aufruf)
+- Ergebnis:
+	- `STATUS=Analyse abgeschlossen`
+	- `ERROR=None`
+	- `HAS_CHART=True`
+	- `TIMEFRAME=1h`
+	- `CANDLES=100`
+	- `SWINGS=97`
+	- `ZONES=98`
+	- `ZONE_TYPES=['resistance', 'support']`
+
+Bekannte Einschraenkungen:
+- Das Domain-Modell fuehrt derzeit keinen expliziten `confirmed_at`-Zeitstempel pro Pivot/Swing; gearbeitet wird mit bestaetigten Swing-Pivots und deren Extremzeitstempel (`pivot.timestamp`).
+- Die technische No-Lookahead-Bedingung ist ueber die bestaetigte Swing-Eingabe erfuellt, die gesonderte Darstellung eines expliziten Bestaetigungszeitpunkts ist jedoch nicht Teil des aktuellen Modells.
+
+Offene visuelle Windows-Abnahme (Product Owner):
+1. `python -m elliottwaver` starten.
+2. Datei `engineering/testdata/swing_e2e_100.csv` laden und Analyse starten.
+3. Pruefen: Candles, Swing-/Pivot-Overlays, Elliott/Fibonacci/Szenarien weiterhin sichtbar.
+4. Checkbox `S/R Zonen` EIN/AUS schalten und pruefen, dass nur Zonen ein-/ausgeblendet werden.
+5. Mit `+`, `-`, `<`, `>`, `Reset` interagieren und pruefen, dass Zonen/Overlays konsistent bleiben.
+6. Ergebnis als visuell akzeptiert oder nachzubessern protokollieren.
+
+### 24.1 EP-09 Visual Fix (Lesbarkeit) - 2026-11-21
+
+Ursachenanalyse (vor Korrektur):
+- Auf `engineering/testdata/swing_e2e_100.csv` entstanden `98` Zonen (`49` Support, `49` Resistance), weil praktisch jeder bestaetigte Pivot genau einen Zonenkandidaten erzeugte.
+- Die grossflaechige Ueberdeckung entstand primaer durch Rendering (alle Zonen gleichzeitig, horizontale Vollbreite) und Zeichenreihenfolge: Zonen wurden ueber Candles gezeichnet.
+- Beschriftung wurde fuer jede sichtbare Zone gezeichnet, was bei vielen Zonen zu starker visueller Verdichtung fuehrte.
+- In dieser Fixture war Zonenbreite je Kandidat klein (`width=1`), d. h. die Hauptursache war nicht ein einzelner ueberbreiter Merge, sondern die gleichzeitige Anzeige vieler Bander.
+
+Umgesetzte Korrekturen:
+- Fachliche Kandidaten bleiben vollstaendig erhalten (keine Datenverluste im Chart-Contract).
+- Anzeigeauswahl getrennt von Fachkandidaten:
+	- Relevanzranking aus Beruehrungen (`touch_count`), Aktualitaet (`last_timestamp`) und Preisnaehe zum aktuellen Viewport-Rechtsrandpreis.
+	- Sichtbarkeitslimit: maximal `5` Support + `5` Resistance gleichzeitig.
+	- Zonen mit `last_timestamp` nach dem aktuellen Viewport-Rechtsrand werden im Viewport nicht angezeigt.
+- Aggregation gehaertet:
+	- Merge nur bei Ueberlappung und nur solange eine konfigurierbare Maximalbreite nicht ueberschritten wird (`DEFAULT_MAX_ZONE_WIDTH_RATIO=0.03`).
+	- Dadurch wird transitive Ausweitung zu ueberbreiten Sammelzonen begrenzt.
+- Rendering verbessert:
+	- Zonen werden als Hintergrundband vor Candles gezeichnet.
+	- Support in dezentem Tuerkis, Resistance in dezentem Orange, hohe Transparenzwirkung via `stipple`.
+	- Kurzlabel auf `SUP xN`/`RES xN` reduziert.
+	- Label-Drosselung bei engem vertikalem Abstand oder zu niedriger Bandhoehe.
+
+Geaenderte Dateien (Visual Fix):
+- `src/elliottwaver/application/support_resistance.py`
+- `src/elliottwaver/interfaces/chart_tk.py`
+- `tests/unit/application/test_support_resistance.py`
+- `tests/unit/interfaces/test_chart_tk.py`
+- `tests/unit/interfaces/test_desktop_tk.py`
+
+Zusatztests (neu/erweitert):
+- Sichtbarkeitslimit `5+5` fuer Zonen im Render-Modell.
+- Deterministische Relevanzauswahl.
+- Kandidaten bleiben im Contract unverkuerzt erhalten (Fixture-Test `>10` Zonen).
+- Hintergrund-Zeichenreihenfolge (Zonen vor Candles).
+- Begrenzung transitive Merge-Ausdehnung.
+- Bestehende Toggle-/Zoom-/Pan-/Reset-Tests weiterhin grün.
+
+Validierung nach Korrektur:
+- `python -m ruff format --check .` -> PASS
+- `python -m ruff check .` -> PASS
+- `python -m mypy src tests` -> PASS (`no issues found in 138 source files`)
+- `python -m pytest` -> PASS (`391 passed`)
+- Coverage: `92.61%` (Gate >= 90% bestanden)
+
+Expliziter Integrationsnachweis (`engineering/testdata/swing_e2e_100.csv`):
+- `STATUS=Analyse abgeschlossen`
+- `ERROR=None`
+- `HAS_CHART=True`
+- `CANDLES=100`, `SWINGS=97`
+- Fachkandidaten: `49` Support + `49` Resistance (`98` total)
+- Sichtbare Zonen im aktuellen Viewport: `5` Support + `5` Resistance (`10` total)
+
+Einschraenkung Bestaetigungszeitpunkt:
+- Das aktuelle Modell enthaelt fuer Pivots/Swings keinen expliziten `confirmed_at`-Zeitstempel.
+- Vorhanden sind Extremzeitstempel (`pivot.timestamp`) und durch den Adapter nur bereits bestaetigte Swings.
+- Damit kann historische Erstsichtbarkeit streng nach Bestaetigungszeitpunkt derzeit nicht vollstaendig modelliert werden, ohne Datenvertragserweiterung.
+- Saubere spaetere Erweiterung: `confirmed_at` in Pivot/Swing (oder separate Confirmation-Metadaten) aufnehmen, in ChartContract durchreichen und Zonensichtbarkeit pro Viewport daran binden.
+
+### EP-09 Final Visual Polish
+
+Status:
+- Umsetzung abgeschlossen und technisch verifiziert.
+
+Umsetzungsschwerpunkte:
+- Sichtbarkeitsregel auf Standard `3+3` (Support/Resistance) umgestellt.
+- Technische Obergrenze je Richtung als konfigurierbarer Parameter eingefuehrt, hart auf `max 5` begrenzt.
+- Kandidatenmenge bleibt unveraendert; Begrenzung wirkt nur auf die Anzeigeauswahl im Renderer.
+- Deterministische Relevanzselektion beibehalten (touch_count, recency, proximity) ohne Zukunftsdaten.
+- Visuelle Entflechtung ergaenzt:
+	- Stark ueberlappende oder auf der Preisachse praktisch nicht unterscheidbare Zonen desselben Typs werden nicht gleichzeitig angezeigt.
+	- Bei Kollisionen bleibt die hoeherrangige Zone erhalten.
+- Label-Interferenz reduziert:
+	- Zonenlabels standardmaessig deaktiviert (keine In-Zone-Textkollisionen im Normalfall).
+	- Optionales Labeling bleibt technisch verfuegbar.
+- Zeichenreihenfolge unveraendert korrekt: Zonen im Hintergrund, Candles/Overlays darueber.
+
+Betroffene Dateien:
+- `src/elliottwaver/interfaces/chart_tk.py`
+- `tests/unit/interfaces/test_chart_tk.py`
+
+Ergaenzte/angepasste Testnachweise:
+- Default-Limit `3+3` fuer sichtbare Zonen.
+- Konfigurierbarkeit bis `5+5` (mit harter Obergrenze).
+- Weniger als `3` sichtbar, wenn Distinktheit fehlt (starke Ueberlappung).
+- Keine gleichzeitige Anzeige stark ueberlappender gleichartiger Zonen.
+- Deterministische Auswahl bei identischem Input.
+- Kandidaten bleiben unverkuerzt (Display-Limit wirkt nicht auf die fachliche Menge).
+- Zoom/Pan/Reset und Checkbox-Verhalten bleiben stabil.
+- Keine S/R-Label-Interferenz im Default.
+
+Validierung (vollstaendige Gates):
+- `python -m ruff format .` -> PASS
+- `python -m ruff check .` -> PASS
+- `python -m mypy src tests` -> PASS
+- `python -m pytest` -> PASS (`395 passed`)
+- Coverage: `92.60%` (Gate >= 90% bestanden)
+
+Expliziter Integrationsnachweis (`engineering/testdata/swing_e2e_100.csv`):
+- `python -m pytest --no-cov tests/unit/interfaces/test_desktop_tk.py -k "populates_support_resistance_zones_from_engineering_fixture"`
+- Ergebnis: `1 passed` (Fixture-basierte Pipeline ueber `present_csv_analysis` erfolgreich)
+
+Startup-Check:
+- `python -m elliottwaver` gestartet.
+- Kein unmittelbarer Traceback beim Start beobachtet; Prozess laeuft erwartungsgemaess in der UI-Hauptschleife und wurde fuer die Session-Beendigung kontrolliert beendet.

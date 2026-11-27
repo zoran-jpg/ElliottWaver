@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 import tkinter as tk
 from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal
 from itertools import pairwise
 from tkinter import ttk
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
         ChartFibonacciProjection,
         ChartForecastScenario,
         ChartPivot,
+        ChartSupportResistanceZone,
         ChartSwing,
         ChartWave,
         TimeframeChartData,
@@ -33,6 +35,14 @@ _MARGIN_BOTTOM = 28
 _MIN_VISIBLE_CANDLES = 8
 _DEFAULT_VISIBLE_CANDLES = 64
 _MIN_WAVE_ANCHORS = 2
+_DEFAULT_VISIBLE_SUPPORT_ZONES = 3
+_DEFAULT_VISIBLE_RESISTANCE_ZONES = 3
+_MAX_VISIBLE_ZONE_LIMIT = 5
+_SHOW_ZONE_LABELS_DEFAULT = False
+_ZONE_LABEL_MIN_VERTICAL_GAP = 14.0
+_ZONE_LABEL_MIN_HEIGHT = 3.0
+_ZONE_VISUAL_MIN_GAP_PIXELS = 6.0
+_ZONE_STRONG_OVERLAP_RATIO = 0.6
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +78,7 @@ class ChartRenderModel:
     swing_lines: tuple[SwingLinePrimitive, ...]
     swing_markers: tuple[SwingMarkerPrimitive, ...]
     pivot_markers: tuple[PivotMarkerPrimitive, ...]
+    support_resistance_zones: tuple[SupportResistanceZonePrimitive, ...]
     wave_lines: tuple[WaveLinePrimitive, ...]
     wave_labels: tuple[WaveLabelPrimitive, ...]
     fibonacci_lines: tuple[FibonacciLinePrimitive, ...]
@@ -152,6 +163,31 @@ class FibonacciLinePrimitive:
 
 
 @dataclass(frozen=True, slots=True)
+class SupportResistanceZonePrimitive:
+    """Horizontal support/resistance zone band rendered across the plot area."""
+
+    zone_type: str
+    y_top: float
+    y_bottom: float
+    x_start: float
+    x_end: float
+    touch_count: int
+    label: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class _ZoneRelevanceScore:
+    zone: ChartSupportResistanceZone
+    touch_score: int
+    recency_score: float
+    proximity_score: float
+
+    @property
+    def total_score(self) -> float:
+        return self.touch_score + self.recency_score + self.proximity_score
+
+
+@dataclass(frozen=True, slots=True)
 class ChartViewport:
     """Visible chart window over a full candle sequence."""
 
@@ -227,6 +263,13 @@ class CandlestickChartView(ttk.Frame):
         ttk.Button(controls, text="Reset", command=self.reset_view).grid(
             row=0, column=4, padx=(10, 0)
         )
+        self._show_support_resistance_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            controls,
+            text="S/R Zonen",
+            variable=self._show_support_resistance_var,
+            command=self._render,
+        ).grid(row=0, column=5, padx=(10, 0))
 
         self._canvas.grid(row=1, column=0, sticky="nsew")
         self.columnconfigure(0, weight=1)
@@ -329,6 +372,9 @@ class CandlestickChartView(ttk.Frame):
             swings=() if timeframe_data is None else timeframe_data.swings,
             pivots=() if timeframe_data is None else timeframe_data.pivots,
             selected_waves=() if timeframe_data is None else timeframe_data.selected_waves,
+            support_resistance_zones=()
+            if timeframe_data is None or not self._show_support_resistance_enabled()
+            else timeframe_data.support_resistance_zones,
             forecast_scenarios=() if self._contract is None else self._contract.forecast_scenarios,
             fibonacci_projections=()
             if self._contract is None
@@ -336,6 +382,7 @@ class CandlestickChartView(ttk.Frame):
         )
 
         self._draw_axes(width=width, height=height)
+        self._draw_support_resistance_overlays(model.support_resistance_zones)
         self._draw_candles(model.primitives)
         self._draw_swing_overlays(model.swing_lines, model.pivot_markers, model.swing_markers)
         self._draw_wave_overlays(model.wave_lines, model.wave_labels)
@@ -447,6 +494,50 @@ class CandlestickChartView(ttk.Frame):
                 anchor="s",
             )
 
+    def _draw_support_resistance_overlays(
+        self,
+        zones: tuple[SupportResistanceZonePrimitive, ...],
+    ) -> None:
+        last_label_y: float | None = None
+        for zone in zones:
+            if zone.zone_type == "support":
+                fill = "#4bbfbf"
+                outline = "#5ad1d1"
+            else:
+                fill = "#e2a35e"
+                outline = "#f1bd83"
+
+            self._canvas.create_rectangle(
+                zone.x_start,
+                zone.y_top,
+                zone.x_end,
+                zone.y_bottom,
+                fill=fill,
+                outline=outline,
+                width=1,
+                stipple="gray75",
+            )
+
+            label_y = zone.y_top + 2
+            if (
+                last_label_y is not None
+                and abs(label_y - last_label_y) < _ZONE_LABEL_MIN_VERTICAL_GAP
+            ):
+                continue
+            if zone.y_bottom - zone.y_top < _ZONE_LABEL_MIN_HEIGHT:
+                continue
+            if zone.label is None:
+                continue
+
+            self._canvas.create_text(
+                zone.x_end - 4,
+                label_y,
+                text=zone.label,
+                fill=outline,
+                anchor="ne",
+            )
+            last_label_y = label_y
+
     def _draw_fibonacci_overlays(
         self,
         fibonacci_lines: tuple[FibonacciLinePrimitive, ...],
@@ -517,6 +608,12 @@ class CandlestickChartView(ttk.Frame):
             return
         self.zoom_out()
 
+    def _show_support_resistance_enabled(self) -> bool:
+        var = getattr(self, "_show_support_resistance_var", None)
+        if var is None:
+            return True
+        return bool(var.get())
+
 
 def build_chart_render_model(
     *,
@@ -527,8 +624,12 @@ def build_chart_render_model(
     swings: tuple[ChartSwing, ...] = (),
     pivots: tuple[ChartPivot, ...] = (),
     selected_waves: tuple[ChartWave, ...] = (),
+    support_resistance_zones: tuple[ChartSupportResistanceZone, ...] = (),
     forecast_scenarios: tuple[ChartForecastScenario, ...] = (),
     fibonacci_projections: tuple[ChartFibonacciProjection, ...] = (),
+    max_visible_support_zones: int = _DEFAULT_VISIBLE_SUPPORT_ZONES,
+    max_visible_resistance_zones: int = _DEFAULT_VISIBLE_RESISTANCE_ZONES,
+    show_support_resistance_labels: bool = _SHOW_ZONE_LABELS_DEFAULT,
 ) -> ChartRenderModel:
     """Create a deterministic render model for the provided viewport."""
 
@@ -609,6 +710,22 @@ def build_chart_render_model(
         timestamp_x=timestamp_x,
         map_price=map_price,
     )
+    support_resistance_zone_primitives = _build_support_resistance_primitives(
+        support_resistance_zones=_select_visible_support_resistance_zones(
+            support_resistance_zones=support_resistance_zones,
+            candles=visible,
+            max_visible_support_zones=max_visible_support_zones,
+            max_visible_resistance_zones=max_visible_resistance_zones,
+        ),
+        map_price=map_price,
+        min_price=min_price,
+        max_price=max_price,
+        plot_top=plot_top,
+        plot_bottom=plot_bottom,
+        plot_left=plot_left,
+        plot_right=plot_right,
+        show_labels=show_support_resistance_labels,
+    )
     fibonacci_lines = _build_fibonacci_lines(
         fibonacci_projections=fibonacci_projections,
         map_price=map_price,
@@ -640,6 +757,7 @@ def build_chart_render_model(
         swing_lines=swing_lines,
         swing_markers=swing_markers,
         pivot_markers=pivot_markers,
+        support_resistance_zones=support_resistance_zone_primitives,
         wave_lines=wave_lines,
         wave_labels=wave_labels,
         fibonacci_lines=fibonacci_lines,
@@ -771,6 +889,169 @@ def _build_wave_primitives(
             )
 
     return tuple(wave_lines), tuple(wave_labels)
+
+
+def _build_support_resistance_primitives(
+    *,
+    support_resistance_zones: tuple[ChartSupportResistanceZone, ...],
+    map_price: Callable[[Decimal], float],
+    min_price: Decimal,
+    max_price: Decimal,
+    plot_top: float,
+    plot_bottom: float,
+    plot_left: float,
+    plot_right: float,
+    show_labels: bool,
+) -> tuple[SupportResistanceZonePrimitive, ...]:
+    primitives: list[SupportResistanceZonePrimitive] = []
+
+    for zone in support_resistance_zones:
+        if zone.upper_price < min_price or zone.lower_price > max_price:
+            continue
+
+        y_top = map_price(min(zone.upper_price, max_price))
+        y_bottom = map_price(max(zone.lower_price, min_price))
+        y_top = max(y_top, plot_top)
+        y_bottom = min(y_bottom, plot_bottom)
+        if y_bottom - y_top < 1.0:
+            y_bottom = y_top + 1.0
+
+        label_prefix = "SUP" if zone.zone_type == "support" else "RES"
+        primitives.append(
+            SupportResistanceZonePrimitive(
+                zone_type=zone.zone_type,
+                y_top=y_top,
+                y_bottom=y_bottom,
+                x_start=plot_left,
+                x_end=plot_right,
+                touch_count=zone.touch_count,
+                label=f"{label_prefix} x{zone.touch_count}" if show_labels else None,
+            )
+        )
+
+    return _filter_visually_distinct_primitives(tuple(primitives))
+
+
+def _select_visible_support_resistance_zones(
+    *,
+    support_resistance_zones: tuple[ChartSupportResistanceZone, ...],
+    candles: tuple[ChartCandle, ...],
+    max_visible_support_zones: int,
+    max_visible_resistance_zones: int,
+) -> tuple[ChartSupportResistanceZone, ...]:
+    if not support_resistance_zones or not candles:
+        return ()
+
+    as_of_timestamp = candles[-1].opened_at
+    reference_price = candles[-1].close_price
+    available = tuple(
+        zone for zone in support_resistance_zones if zone.last_timestamp <= as_of_timestamp
+    )
+
+    supports = _top_relevant_zones(
+        zones=tuple(zone for zone in available if zone.zone_type == "support"),
+        as_of_timestamp=as_of_timestamp,
+        reference_price=reference_price,
+        limit=_resolve_zone_limit(max_visible_support_zones),
+    )
+    resistances = _top_relevant_zones(
+        zones=tuple(zone for zone in available if zone.zone_type == "resistance"),
+        as_of_timestamp=as_of_timestamp,
+        reference_price=reference_price,
+        limit=_resolve_zone_limit(max_visible_resistance_zones),
+    )
+    return supports + resistances
+
+
+def _top_relevant_zones(
+    *,
+    zones: tuple[ChartSupportResistanceZone, ...],
+    as_of_timestamp: datetime,
+    reference_price: Decimal,
+    limit: int,
+) -> tuple[ChartSupportResistanceZone, ...]:
+    scored: list[_ZoneRelevanceScore] = []
+    for zone in zones:
+        midpoint = (zone.lower_price + zone.upper_price) / Decimal("2")
+        distance = abs(reference_price - midpoint)
+        recency = as_of_timestamp - zone.last_timestamp
+        if recency < timedelta(0):
+            continue
+
+        touch_score = zone.touch_count * 100
+        recency_score = 1000.0 / (1.0 + recency.total_seconds())
+        proximity_score = 1000.0 / (1.0 + float(distance))
+        scored.append(
+            _ZoneRelevanceScore(
+                zone=zone,
+                touch_score=touch_score,
+                recency_score=recency_score,
+                proximity_score=proximity_score,
+            )
+        )
+
+    selected = sorted(
+        scored,
+        key=lambda item: (
+            -item.total_score,
+            -item.zone.touch_count,
+            -item.zone.last_timestamp.timestamp(),
+            abs(
+                float(
+                    ((item.zone.lower_price + item.zone.upper_price) / Decimal("2"))
+                    - reference_price
+                )
+            ),
+            item.zone.lower_price,
+            item.zone.upper_price,
+        ),
+    )[:limit]
+
+    return tuple(item.zone for item in selected)
+
+
+def _resolve_zone_limit(requested_limit: int) -> int:
+    return min(max(0, requested_limit), _MAX_VISIBLE_ZONE_LIMIT)
+
+
+def _filter_visually_distinct_primitives(
+    primitives: tuple[SupportResistanceZonePrimitive, ...],
+) -> tuple[SupportResistanceZonePrimitive, ...]:
+    accepted: list[SupportResistanceZonePrimitive] = []
+
+    for primitive in primitives:
+        same_type = [item for item in accepted if item.zone_type == primitive.zone_type]
+        if any(_is_visually_similar(primitive, item) for item in same_type):
+            continue
+        accepted.append(primitive)
+
+    return tuple(
+        sorted(
+            accepted,
+            key=lambda primitive: (
+                primitive.zone_type,
+                primitive.y_top,
+                primitive.y_bottom,
+            ),
+        )
+    )
+
+
+def _is_visually_similar(
+    left: SupportResistanceZonePrimitive,
+    right: SupportResistanceZonePrimitive,
+) -> bool:
+    left_height = max(left.y_bottom - left.y_top, 1.0)
+    right_height = max(right.y_bottom - right.y_top, 1.0)
+
+    overlap = max(0.0, min(left.y_bottom, right.y_bottom) - max(left.y_top, right.y_top))
+    overlap_ratio = overlap / min(left_height, right_height)
+    if overlap_ratio >= _ZONE_STRONG_OVERLAP_RATIO:
+        return True
+
+    left_center = (left.y_top + left.y_bottom) / 2
+    right_center = (right.y_top + right.y_bottom) / 2
+    return abs(left_center - right_center) < _ZONE_VISUAL_MIN_GAP_PIXELS
 
 
 def _build_fibonacci_lines(
