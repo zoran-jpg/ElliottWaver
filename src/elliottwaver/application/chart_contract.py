@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from elliottwaver.application.support_resistance import derive_support_resistance_zones
 from elliottwaver.core.shared.errors import DomainError
 from elliottwaver.domain.market.wave import WaveType
+from elliottwaver.domain.patterns import detect_candlestick_patterns
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -126,6 +127,25 @@ class ChartSupportResistanceZone:
 
 
 @dataclass(frozen=True, slots=True)
+class ChartCandlestickPattern:
+    """Immutable candlestick pattern payload for chart overlays."""
+
+    pattern_id: str
+    pattern_type: str
+    short_label: str
+    direction: str
+    started_at: datetime
+    ended_at: datetime
+    confirmed_at: datetime | None
+    confirmation_status: str
+    candle_timestamps: tuple[datetime, ...]
+    price_anchor: Decimal
+    context: str
+    reasons: tuple[str, ...]
+    geometric_score: Decimal
+
+
+@dataclass(frozen=True, slots=True)
 class TimeframeChartData:
     """Immutable chart payload for one analyzed timeframe."""
 
@@ -134,6 +154,7 @@ class TimeframeChartData:
     swings: tuple[ChartSwing, ...]
     pivots: tuple[ChartPivot, ...]
     support_resistance_zones: tuple[ChartSupportResistanceZone, ...] = ()
+    candlestick_patterns: tuple[ChartCandlestickPattern, ...] = ()
     selected_waves: tuple[ChartWave, ...] = ()
 
 
@@ -220,6 +241,7 @@ def _map_timeframe_result(timeframe_result: TimeframeAnalysisResult) -> Timefram
     support_resistance_zones = _map_support_resistance_zones(
         timeframe_result=timeframe_result,
     )
+    candlestick_patterns = _map_candlestick_patterns(timeframe_result=timeframe_result)
     selected_waves = _map_selected_waves(timeframe_result.selection_result)
     return TimeframeChartData(
         timeframe=request.timeframe.value,
@@ -227,8 +249,50 @@ def _map_timeframe_result(timeframe_result: TimeframeAnalysisResult) -> Timefram
         swings=swings,
         pivots=pivots,
         support_resistance_zones=support_resistance_zones,
+        candlestick_patterns=candlestick_patterns,
         selected_waves=selected_waves,
     )
+
+
+def _map_candlestick_patterns(
+    *,
+    timeframe_result: TimeframeAnalysisResult,
+) -> tuple[ChartCandlestickPattern, ...]:
+    patterns = detect_candlestick_patterns(candles=timeframe_result.candles)
+    return tuple(
+        ChartCandlestickPattern(
+            pattern_id=pattern.pattern_id,
+            pattern_type=pattern.pattern_type.value,
+            short_label=_pattern_short_label(pattern.pattern_type.value),
+            direction=pattern.direction.value,
+            started_at=pattern.started_at,
+            ended_at=pattern.ended_at,
+            confirmed_at=pattern.confirmed_at,
+            confirmation_status=pattern.confirmation_status.value,
+            candle_timestamps=pattern.candle_timestamps,
+            price_anchor=pattern.price_anchor,
+            context=pattern.context.value,
+            reasons=pattern.reasons,
+            geometric_score=pattern.geometric_score,
+        )
+        for pattern in patterns
+    )
+
+
+def _pattern_short_label(pattern_type: str) -> str:
+    mapping = {
+        "bullish_engulfing": "ENG+",
+        "bearish_engulfing": "ENG-",
+        "hammer": "HAM",
+        "shooting_star": "SS",
+        "dragonfly_doji": "DD",
+        "gravestone_doji": "GD",
+        "tweezer_bottom": "TB",
+        "tweezer_top": "TT",
+        "bullish_three_line_strike": "TLS+",
+        "bearish_three_line_strike": "TLS-",
+    }
+    return mapping.get(pattern_type, pattern_type.upper())
 
 
 def _map_support_resistance_zones(

@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
     from elliottwaver.application.chart_contract import (
         ChartCandle,
+        ChartCandlestickPattern,
         ChartDataContract,
         ChartFibonacciProjection,
         ChartForecastScenario,
@@ -43,6 +44,8 @@ _ZONE_LABEL_MIN_VERTICAL_GAP = 14.0
 _ZONE_LABEL_MIN_HEIGHT = 3.0
 _ZONE_VISUAL_MIN_GAP_PIXELS = 6.0
 _ZONE_STRONG_OVERLAP_RATIO = 0.6
+_DEFAULT_VISIBLE_PATTERN_MARKERS = 12
+_PATTERN_LABEL_MIN_X_GAP = 22.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +82,7 @@ class ChartRenderModel:
     swing_markers: tuple[SwingMarkerPrimitive, ...]
     pivot_markers: tuple[PivotMarkerPrimitive, ...]
     support_resistance_zones: tuple[SupportResistanceZonePrimitive, ...]
+    candlestick_patterns: tuple[CandlestickPatternPrimitive, ...]
     wave_lines: tuple[WaveLinePrimitive, ...]
     wave_labels: tuple[WaveLabelPrimitive, ...]
     fibonacci_lines: tuple[FibonacciLinePrimitive, ...]
@@ -176,6 +180,17 @@ class SupportResistanceZonePrimitive:
 
 
 @dataclass(frozen=True, slots=True)
+class CandlestickPatternPrimitive:
+    """Chart marker for one or more candlestick patterns ending on the same candle."""
+
+    ended_at: datetime
+    x: float
+    y: float
+    label: str
+    color: str
+
+
+@dataclass(frozen=True, slots=True)
 class _ZoneRelevanceScore:
     zone: ChartSupportResistanceZone
     touch_score: int
@@ -270,6 +285,13 @@ class CandlestickChartView(ttk.Frame):
             variable=self._show_support_resistance_var,
             command=self._render,
         ).grid(row=0, column=5, padx=(10, 0))
+        self._show_candlestick_patterns_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            controls,
+            text="Kerzenformationen",
+            variable=self._show_candlestick_patterns_var,
+            command=self._render,
+        ).grid(row=0, column=6, padx=(10, 0))
 
         self._canvas.grid(row=1, column=0, sticky="nsew")
         self.columnconfigure(0, weight=1)
@@ -375,6 +397,9 @@ class CandlestickChartView(ttk.Frame):
             support_resistance_zones=()
             if timeframe_data is None or not self._show_support_resistance_enabled()
             else timeframe_data.support_resistance_zones,
+            candlestick_patterns=()
+            if timeframe_data is None or not self._show_candlestick_patterns_enabled()
+            else timeframe_data.candlestick_patterns,
             forecast_scenarios=() if self._contract is None else self._contract.forecast_scenarios,
             fibonacci_projections=()
             if self._contract is None
@@ -384,6 +409,10 @@ class CandlestickChartView(ttk.Frame):
         self._draw_axes(width=width, height=height)
         self._draw_support_resistance_overlays(model.support_resistance_zones)
         self._draw_candles(model.primitives)
+        self._draw_candlestick_pattern_overlays(model.candlestick_patterns)
+        self._draw_candlestick_pattern_status_hint(
+            () if timeframe_data is None else timeframe_data.candlestick_patterns
+        )
         self._draw_swing_overlays(model.swing_lines, model.pivot_markers, model.swing_markers)
         self._draw_wave_overlays(model.wave_lines, model.wave_labels)
         self._draw_fibonacci_overlays(model.fibonacci_lines)
@@ -560,6 +589,47 @@ class CandlestickChartView(ttk.Frame):
                 anchor="se",
             )
 
+    def _draw_candlestick_pattern_overlays(
+        self,
+        patterns: tuple[CandlestickPatternPrimitive, ...],
+    ) -> None:
+        for pattern in patterns:
+            self._canvas.create_text(
+                pattern.x,
+                pattern.y,
+                text=pattern.label,
+                fill=pattern.color,
+                anchor="s",
+            )
+
+    def _draw_candlestick_pattern_status_hint(
+        self,
+        patterns: tuple[ChartCandlestickPattern, ...],
+    ) -> None:
+        if not self._show_candlestick_patterns_enabled() or not patterns:
+            return
+
+        statuses = {pattern.confirmation_status for pattern in patterns}
+        if statuses == {"unknown"}:
+            text = (
+                "Kerzenformationen: geometrische Erkennung - "
+                "zeitliche Bestaetigung nicht verfuegbar."
+            )
+        elif statuses == {"pending"}:
+            text = "Kerzenformationen: geometrische Erkennung - zeitliche Bestaetigung ausstehend."
+        elif statuses == {"confirmed"}:
+            text = "Kerzenformationen: geometrische Erkennung - zeitlich bestaetigt."
+        else:
+            text = "Kerzenformationen: geometrische Erkennung - zeitlicher Status gemischt."
+
+        self._canvas.create_text(
+            _MARGIN_LEFT,
+            _MARGIN_TOP,
+            text=text,
+            fill="#c5cedd",
+            anchor="nw",
+        )
+
     def _draw_axis_and_scenario_labels(
         self,
         time_labels: tuple[AxisLabel, ...],
@@ -614,6 +684,12 @@ class CandlestickChartView(ttk.Frame):
             return True
         return bool(var.get())
 
+    def _show_candlestick_patterns_enabled(self) -> bool:
+        var = getattr(self, "_show_candlestick_patterns_var", None)
+        if var is None:
+            return True
+        return bool(var.get())
+
 
 def build_chart_render_model(
     *,
@@ -625,6 +701,7 @@ def build_chart_render_model(
     pivots: tuple[ChartPivot, ...] = (),
     selected_waves: tuple[ChartWave, ...] = (),
     support_resistance_zones: tuple[ChartSupportResistanceZone, ...] = (),
+    candlestick_patterns: tuple[ChartCandlestickPattern, ...] = (),
     forecast_scenarios: tuple[ChartForecastScenario, ...] = (),
     fibonacci_projections: tuple[ChartFibonacciProjection, ...] = (),
     max_visible_support_zones: int = _DEFAULT_VISIBLE_SUPPORT_ZONES,
@@ -671,33 +748,13 @@ def build_chart_render_model(
         ratio = float((price - min_price) / (max_price - min_price))
         return plot_bottom - (ratio * plot_height)
 
-    primitives: list[CandlestickPrimitive] = []
-    timestamp_x: dict[datetime, float] = {}
-    for index, candle in enumerate(visible):
-        x_center = plot_left + (index + 0.5) * step
-        timestamp_x[candle.opened_at] = x_center
-        wick_top = map_price(candle.high_price)
-        wick_bottom = map_price(candle.low_price)
-        open_y = map_price(candle.open_price)
-        close_y = map_price(candle.close_price)
-        body_top = min(open_y, close_y)
-        body_bottom = max(open_y, close_y)
-        if body_bottom - body_top < 1.0:
-            body_bottom = body_top + 1.0
-
-        primitives.append(
-            CandlestickPrimitive(
-                opened_at=candle.opened_at,
-                x_center=x_center,
-                wick_top=wick_top,
-                wick_bottom=wick_bottom,
-                body_top=body_top,
-                body_bottom=body_bottom,
-                body_left=x_center - body_width / 2,
-                body_right=x_center + body_width / 2,
-                bullish=candle.close_price >= candle.open_price,
-            )
-        )
+    primitives, timestamp_x = _build_candle_primitives(
+        visible=visible,
+        plot_left=plot_left,
+        step=step,
+        body_width=body_width,
+        map_price=map_price,
+    )
 
     swing_lines, swing_markers, pivot_markers = _build_overlay_primitives(
         swings=swings,
@@ -726,6 +783,11 @@ def build_chart_render_model(
         plot_right=plot_right,
         show_labels=show_support_resistance_labels,
     )
+    candlestick_pattern_primitives = _build_candlestick_pattern_primitives(
+        candlestick_patterns=candlestick_patterns,
+        timestamp_x=timestamp_x,
+        map_price=map_price,
+    )
     fibonacci_lines = _build_fibonacci_lines(
         fibonacci_projections=fibonacci_projections,
         map_price=map_price,
@@ -753,11 +815,12 @@ def build_chart_render_model(
 
     return ChartRenderModel(
         candles=visible,
-        primitives=tuple(primitives),
+        primitives=primitives,
         swing_lines=swing_lines,
         swing_markers=swing_markers,
         pivot_markers=pivot_markers,
         support_resistance_zones=support_resistance_zone_primitives,
+        candlestick_patterns=candlestick_pattern_primitives,
         wave_lines=wave_lines,
         wave_labels=wave_labels,
         fibonacci_lines=fibonacci_lines,
@@ -767,6 +830,46 @@ def build_chart_render_model(
         min_price=min_price,
         max_price=max_price,
     )
+
+
+def _build_candle_primitives(
+    *,
+    visible: tuple[ChartCandle, ...],
+    plot_left: float,
+    step: float,
+    body_width: float,
+    map_price: Callable[[Decimal], float],
+) -> tuple[tuple[CandlestickPrimitive, ...], dict[datetime, float]]:
+    primitives: list[CandlestickPrimitive] = []
+    timestamp_x: dict[datetime, float] = {}
+
+    for index, candle in enumerate(visible):
+        x_center = plot_left + (index + 0.5) * step
+        timestamp_x[candle.opened_at] = x_center
+        wick_top = map_price(candle.high_price)
+        wick_bottom = map_price(candle.low_price)
+        open_y = map_price(candle.open_price)
+        close_y = map_price(candle.close_price)
+        body_top = min(open_y, close_y)
+        body_bottom = max(open_y, close_y)
+        if body_bottom - body_top < 1.0:
+            body_bottom = body_top + 1.0
+
+        primitives.append(
+            CandlestickPrimitive(
+                opened_at=candle.opened_at,
+                x_center=x_center,
+                wick_top=wick_top,
+                wick_bottom=wick_bottom,
+                body_top=body_top,
+                body_bottom=body_bottom,
+                body_left=x_center - body_width / 2,
+                body_right=x_center + body_width / 2,
+                bullish=candle.close_price >= candle.open_price,
+            )
+        )
+
+    return tuple(primitives), timestamp_x
 
 
 def _build_overlay_primitives(
@@ -1052,6 +1155,85 @@ def _is_visually_similar(
     left_center = (left.y_top + left.y_bottom) / 2
     right_center = (right.y_top + right.y_bottom) / 2
     return abs(left_center - right_center) < _ZONE_VISUAL_MIN_GAP_PIXELS
+
+
+def _build_candlestick_pattern_primitives(
+    *,
+    candlestick_patterns: tuple[ChartCandlestickPattern, ...],
+    timestamp_x: dict[datetime, float],
+    map_price: Callable[[Decimal], float],
+) -> tuple[CandlestickPatternPrimitive, ...]:
+    if not candlestick_patterns:
+        return ()
+
+    groups: dict[datetime, list[ChartCandlestickPattern]] = {}
+    for pattern in candlestick_patterns:
+        if pattern.ended_at not in timestamp_x:
+            continue
+        groups.setdefault(pattern.ended_at, []).append(pattern)
+
+    selected_groups = sorted(
+        groups.items(),
+        key=lambda item: _pattern_group_sort_key(item[0], tuple(item[1])),
+    )[:_DEFAULT_VISIBLE_PATTERN_MARKERS]
+
+    primitives: list[CandlestickPatternPrimitive] = []
+    last_x: float | None = None
+    for ended_at, patterns in selected_groups:
+        ordered_patterns = sorted(patterns, key=_pattern_priority_key)
+        labels = [pattern.short_label for pattern in ordered_patterns]
+        merged_label = labels[0] if len(labels) == 1 else f"{labels[0]}+{len(labels) - 1}"
+
+        primary = ordered_patterns[0]
+        x = timestamp_x[ended_at]
+        y = map_price(primary.price_anchor)
+        if primary.direction == "bullish":
+            y += 12
+            color = "#7bd88f"
+        elif primary.direction == "bearish":
+            y -= 12
+            color = "#ff7f7f"
+        else:
+            y -= 10
+            color = "#a8a8a8"
+
+        if last_x is not None and abs(x - last_x) < _PATTERN_LABEL_MIN_X_GAP:
+            continue
+        last_x = x
+
+        primitives.append(
+            CandlestickPatternPrimitive(
+                ended_at=ended_at,
+                x=x,
+                y=y,
+                label=merged_label,
+                color=color,
+            )
+        )
+
+    return tuple(
+        sorted(
+            primitives,
+            key=lambda pattern: (pattern.ended_at, pattern.label),
+        )
+    )
+
+
+def _pattern_group_sort_key(
+    ended_at: datetime,
+    patterns: tuple[ChartCandlestickPattern, ...],
+) -> tuple[int, float, datetime]:
+    multi_candle_score = max(len(pattern.candle_timestamps) for pattern in patterns)
+    geometric_score = max(float(pattern.geometric_score) for pattern in patterns)
+    return (-multi_candle_score, -geometric_score, ended_at)
+
+
+def _pattern_priority_key(pattern: ChartCandlestickPattern) -> tuple[int, float, str]:
+    return (
+        -len(pattern.candle_timestamps),
+        -float(pattern.geometric_score),
+        pattern.pattern_type,
+    )
 
 
 def _build_fibonacci_lines(

@@ -9,6 +9,7 @@ from elliottwaver.application import (
     AnalyzeMultiTimeframeService,
     AnalyzeTimeframeService,
     CandleToSwingPreparationPort,
+    MarketDataProvider,
 )
 from elliottwaver.application.forecast import ForecastEngine
 from elliottwaver.infrastructure.analysis import (
@@ -23,13 +24,14 @@ def build_csv_analysis_application(
     *,
     csv_path: str | Path,
     swing_preparation_port: CandleToSwingPreparationPort | None = None,
+    market_data_provider: MarketDataProvider | None = None,
 ) -> AnalysisApplication:
     """Build a CSV-backed analysis application with infrastructure adapters."""
 
     analysis_clock = SystemAnalysisClock()
     analysis_id_provider = UuidAnalysisIdProvider()
     timeframe_use_case = AnalyzeTimeframeService(
-        market_data_provider=CsvMarketDataProvider(csv_path=Path(csv_path)),
+        market_data_provider=market_data_provider or CsvMarketDataProvider(csv_path=Path(csv_path)),
         swing_preparation_port=swing_preparation_port or PivotSwingPreparationAdapter(),
         analysis_clock=analysis_clock,
         analysis_id_provider=analysis_id_provider,

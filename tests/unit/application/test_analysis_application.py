@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -56,6 +56,16 @@ class StaticUseCase(AnalyzeMultiTimeframeUseCase):
         return self.response
 
 
+@dataclass(slots=True)
+class CountingUseCase(AnalyzeMultiTimeframeUseCase):
+    response: AnalysisResponse
+    calls: int = 0
+
+    def analyze(self, _request: AnalysisRequest) -> AnalysisResponse:
+        self.calls += 1
+        return self.response
+
+
 def make_empty_completed_response() -> AnalysisResponse:
     metadata = AnalysisMetadata(
         analysis_id=_ANALYSIS_ID,
@@ -67,6 +77,19 @@ def make_empty_completed_response() -> AnalysisResponse:
         processed_timeframes=(),
     )
     return AnalysisResponse(metadata=metadata, stage=AnalysisStage.COMPLETED, timeframe_results=())
+
+
+def make_incomplete_response() -> AnalysisResponse:
+    metadata = AnalysisMetadata(
+        analysis_id=_ANALYSIS_ID,
+        correlation_id="corr-app",
+        requested_at=_START,
+        completed_at=_START,
+        symbol=_SYMBOL,
+        requested_timeframes=(),
+        processed_timeframes=(),
+    )
+    return AnalysisResponse(metadata=metadata, stage=AnalysisStage.CONFLUENCE, timeframe_results=())
 
 
 def test_analysis_application_runs_analysis_and_forecast() -> None:
@@ -166,3 +189,58 @@ def test_analysis_application_passes_through_projection_tuple_identity() -> None
     result = app.run(make_request()).forecast
 
     assert result.projections is forecast_result.projections
+
+
+def test_analysis_application_optional_forecast_skips_forecast_when_analysis_incomplete() -> None:
+    response = make_incomplete_response()
+    use_case = CountingUseCase(response=response)
+
+    @dataclass(slots=True)
+    class CountingForecastEngine:
+        calls: int = 0
+
+        def generate(self, _analysis: AnalysisResponse) -> ForecastResult:
+            self.calls += 1
+            message = "forecast engine should not run for incomplete analysis"
+            raise AssertionError(message)
+
+    forecast_engine = CountingForecastEngine()
+    app = AnalysisApplication(analyze_use_case=use_case, forecast_engine=forecast_engine)
+
+    result = app.run_with_optional_forecast(make_request())
+
+    assert use_case.calls == 1
+    assert forecast_engine.calls == 0
+    assert result.analysis is response
+    assert result.analysis.stage is AnalysisStage.CONFLUENCE
+    assert result.forecast.is_empty is True
+    assert result.forecast.has_forecast is False
+    assert result.forecast.overall_confidence == Decimal("0")
+    assert result.forecast.projections == ()
+
+
+def test_analysis_application_optional_forecast_runs_once_when_analysis_completed() -> None:
+    response = make_empty_completed_response()
+    use_case = CountingUseCase(response=response)
+    generated_forecast = ForecastEngine().generate(response)
+
+    @dataclass(slots=True)
+    class SpyForecastEngine:
+        calls: int = 0
+        seen_analyses: list[AnalysisResponse] = field(default_factory=list)
+
+        def generate(self, analysis: AnalysisResponse) -> ForecastResult:
+            self.calls += 1
+            self.seen_analyses.append(analysis)
+            return generated_forecast
+
+    forecast_engine = SpyForecastEngine()
+    app = AnalysisApplication(analyze_use_case=use_case, forecast_engine=forecast_engine)
+
+    result = app.run_with_optional_forecast(make_request())
+
+    assert use_case.calls == 1
+    assert forecast_engine.calls == 1
+    assert forecast_engine.seen_analyses == [response]
+    assert result.analysis is response
+    assert result.forecast is generated_forecast
