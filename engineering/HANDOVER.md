@@ -1756,3 +1756,35 @@ Explizit auszuschliessen:
 - `test_market_data.csv`
 - alle Dateien unter `engineering/_audit/`
 - alle paketfremden lokalen Dateien ausserhalb der EP-DEF-11-Allowlist
+
+## 27. DEF-GOV-001 Kontrollierte Dokumentationssynchronisation (2026-11-28)
+
+Status:
+- Laufende Dokumentationskorrektur zur operativen Synchronisation freigegeben.
+- Keine funktionale Implementierung freigegeben.
+- EP-DEF-12 bleibt in Architekturplanung.
+
+Synchronisierte operative Referenzbasis:
+- Merge-Basis `origin/main`: `f9431e0d83f3dead0f912926d817abff867a5206`
+- Feature-Commit EP-DEF-11: `e78b8118350b26ed4795597749fcef236be63e7a`
+- Tree: `7cc8305111e6805a1495a7b77bc0892f137871bc`
+- Pull Request #4: erfolgreich integriert.
+
+Abgenommener Qualitaetsstand (fortgeschrieben, unveraendert):
+- 466 Tests bestanden.
+- Coverage: 92.73%.
+- Feature-CI: 4/4 erfolgreich.
+- Main-CI: 4/4 erfolgreich.
+- Tree-Identitaet nachgewiesen.
+- Integritaetspruefung ohne Abweichungen.
+
+Operative Klarstellung:
+- Historische Paketnachweise in diesem Dokument bleiben erhalten.
+- Dieser Abschnitt synchronisiert nur veraltete operative Statusangaben.
+- Roadmap V3.0 Ziele, Termine und Budgets bleiben unveraendert.
+
+Verbleibende fachliche Grenzen (unveraendert):
+- Die gemeinsame temporale Candle-Semantik garantiert noch keine durchgaengige Lookahead-Freiheit.
+- Produktive Marktdatenintegration sowie kausale Pivot-/Swing-, S/R- und Analyseintegration stehen aus.
+- Keine produktive Signalvalidierung.
+- Keine Strategie- oder Profitabilitaetsvalidierung.
