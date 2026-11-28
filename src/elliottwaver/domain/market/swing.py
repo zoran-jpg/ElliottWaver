@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
@@ -12,7 +13,6 @@ from elliottwaver.core.shared.identifiers import EntityId
 from elliottwaver.domain.market.pivot import PivotType
 
 if TYPE_CHECKING:
-    from datetime import datetime, timedelta
     from decimal import Decimal
 
     from elliottwaver.core.market import Symbol, Timeframe
@@ -33,9 +33,17 @@ class Swing(Entity[EntityId]):
     id: EntityId
     start_pivot: Pivot
     end_pivot: Pivot
+    confirmed_at: datetime | None = None
 
     def __post_init__(self) -> None:
         """Validate swing invariants computed from start and end pivots."""
+
+        self._validate_pivot_pair()
+        self._validate_price_movement()
+        self._validate_confirmation_timestamp()
+
+    def _validate_pivot_pair(self) -> None:
+        """Validate base relational constraints between both pivots."""
 
         if self.start_pivot is self.end_pivot or self.start_pivot.id == self.end_pivot.id:
             message = "Swing pivots must be different"
@@ -56,6 +64,9 @@ class Swing(Entity[EntityId]):
         if self.start_pivot.pivot_type == self.end_pivot.pivot_type:
             message = "Swing pivot types must alternate"
             raise DomainError(message)
+
+    def _validate_price_movement(self) -> None:
+        """Validate directional price movement based on pivot types."""
 
         start_price = self.start_pivot.price.value
         end_price = self.end_pivot.price.value
@@ -80,6 +91,35 @@ class Swing(Entity[EntityId]):
                 raise DomainError(message)
         else:
             message = "Invalid pivot type combination for swing"
+            raise DomainError(message)
+
+    def _validate_confirmation_timestamp(self) -> None:
+        """Validate optional confirmation timestamp against endpoint constraints."""
+
+        if self.confirmed_at is None:
+            return
+
+        if self.confirmed_at.tzinfo is None:
+            message = "Swing confirmed_at must use the UTC timezone"
+            raise DomainError(message)
+
+        if self.confirmed_at.tzinfo != UTC:
+            message = "Swing confirmed_at must use the UTC timezone"
+            raise DomainError(message)
+
+        if self.confirmed_at < self.end_pivot.timestamp:
+            message = "Swing confirmed_at must not be before the end pivot extremum"
+            raise DomainError(message)
+
+        start_confirmed_at = self.start_pivot.confirmed_at
+        end_confirmed_at = self.end_pivot.confirmed_at
+        if start_confirmed_at is None or end_confirmed_at is None:
+            message = "Swing confirmed_at requires confirmed start and end pivots"
+            raise DomainError(message)
+
+        endpoint_confirmation_floor = max(start_confirmed_at, end_confirmed_at)
+        if self.confirmed_at < endpoint_confirmation_floor:
+            message = "Swing confirmed_at must be at or after both pivot confirmations"
             raise DomainError(message)
 
     @property
@@ -131,3 +171,16 @@ class Swing(Entity[EntityId]):
         """Return the non-negative absolute price change."""
 
         return abs(self.price_change)
+
+    def is_confirmed(self, *, as_of: datetime) -> bool:
+        """Return whether this swing is confirmed as of the provided timestamp."""
+
+        if as_of.tzinfo is None:
+            message = "as_of must use the UTC timezone"
+            raise DomainError(message)
+
+        if as_of.tzinfo != UTC:
+            message = "as_of must use the UTC timezone"
+            raise DomainError(message)
+
+        return self.confirmed_at is not None and as_of >= self.confirmed_at

@@ -1,17 +1,24 @@
 ELLIOTTWAVER — MASTER CONTROL
 Version: 1.0
 Erstellt: 2026-11-20
-Status: Steuerungsgrundlage; DEF-GOV-001 abgeschlossen, EP-DEF-12 technisch akzeptiert (Merge ausstehend)
+Status: Steuerungsgrundlage; DEF-GOV-001 abgeschlossen, EP-DEF-12 offiziell abgeschlossen (Main-SHA ed8514f657bbf1c2decb54a68ee3d2a03908b8bf), EP-DEF-13 technisch akzeptiert (Git-Integration ausstehend)
 Gültigkeit: Verbindlicher Arbeitsauftrag für GitHub Copilot im ElliottWaver-Repository.
 Hinweis: Historische Implementierungs- und Testergebnisse sind Berichte, keine aktuelle Repository-Verifikation.
 0. Schnellstart für Copilot
 Rolle: Senior Implementation Engineer. Lies diese Datei vollständig, prüfe die bestehenden Repository-Regeln (insbesondere .github/copilot-instructions.md) und befolge die strengere Sicherheitsregel bei Konflikten. Arbeite nur am ausdrücklich freigegebenen Paket.
 
-Aktuell freigegeben: EP-DEF-12 — Temporal Market Data Integration.
-Vorheriges Paket: DEF-GOV-001 — kontrollierte Dokumentationssynchronisation (abgeschlossen).
+Aktuell freigegeben: EP-DEF-13 — Pivot/Swing-Zeitmodell, kausaler Adapter und Dokumentationssynchronisation.
+Vorheriges Paket: EP-DEF-12 — Temporal Market Data Integration (offiziell abgeschlossen).
 Startbedingung: Implementierungsfreigabe liegt vor; Git-Schreiboperationen bleiben separat genehmigungspflichtig.
 
 Nach jedem Paket: Prüfergebnisse in engineering/HANDOVER.md dokumentieren, Änderungen und offene Risiken offenlegen, dann STOPP. Keine Folgepakete oder Commits ohne gesonderte Freigabe.
+
+Aktualisierung 2026-11-28 (E1):
+- EP-DEF-13 ist technisch akzeptiert, aber noch nicht in den Main-Integrationspfad übernommen.
+- DEF-EP13-001 ist als behoben dokumentiert.
+- C01-C10 sind PASS; Gesamt-Gates PASS mit 553 Tests und 92.53% Coverage.
+- Die produktive as_of-Integration bleibt weiterhin als offener Produktpunkt bestehen.
+- Das RMDV-Konzept ist lokal dokumentiert; reale Marktdaten wurden im Rahmen des Konzepts noch nicht validiert.
 
 Sofortige Stopps: Unklarer Repositoryzustand, drohender Verlust von Benutzeränderungen, Konflikt mit geschützten Dateien, grundlegender Architekturkonflikt, nicht reproduzierbare Qualitätsnachweise.
 1. Projektauftrag und Produktziel

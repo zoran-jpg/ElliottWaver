@@ -8,11 +8,12 @@ Historical measurements and superseded states belong to `METRICS.md` and `engine
 ## Verified repository snapshot
 
 - Repository path: `C:\Users\User\Desktop\ElliottWaver`
-- Baseline branch/commit: `origin/main` at `db66bd6372363740b40624d81f065922f7c8ceb0`
+- Baseline branch/commit: `origin/main` at `ed8514f657bbf1c2decb54a68ee3d2a03908b8bf`
 - Baseline tree: `648ce8ed3447e12e69b09a64e7ebbe4dad677db0`
 - EP-DEF-11: officially completed (Pull Request #4 integrated)
 - DEF-GOV-001: completed (technical closure and post-merge verification)
-- EP-DEF-12: technically accepted (merge pending)
+- EP-DEF-12: officially completed on main (`ed8514f657bbf1c2decb54a68ee3d2a03908b8bf`)
+- EP-DEF-13: technically accepted (Git integration pending)
 - Python environment: `.venv` (Python 3.12.10)
 - Working tree: dirty (pre-existing and in-progress package changes)
 
@@ -34,6 +35,21 @@ Historical measurements and superseded states belong to `METRICS.md` and `engine
 - Remaining limits: fingerprint boundaries and no formal thread-safety guarantee
 - Remaining product-open scope: productive as_of integration and causal pivot/swing detection
 - No system-wide look-ahead freedom claim is made
+- Roadmap V3.0: unchanged
+
+### 2026-11-28 (EP-DEF-13 technical acceptance and E1 documentation)
+
+- Technical acceptance: granted
+- Git integration: pending
+- Core change set: pivot/swing time model and causal swing-preparation adapter documented and validated
+- Defect status: `DEF-EP13-001` fixed
+- Validation suite: C01-C10 PASS
+- `python -m pytest tests`: 553 passed
+- Coverage: 92.53%
+- Gate status: `git diff --check`, Ruff format/check, MyPy, pytest, and single-entrypoint no-cov test all PASS
+- Product-open scope retained: productive as_of integration
+- RMDV status: concept documented; no real market-data validation execution claimed yet
+- Concept status note: concept codes are visual/functional references, not binding calculation rules
 - Roadmap V3.0: unchanged
 
 ### 2026-11-28 (EP-DEF-11 accepted post-merge baseline)

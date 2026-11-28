@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
@@ -69,3 +69,61 @@ def test_rejects_naive_datetime() -> None:
             price=Price.parse("1.00"),
             pivot_type=PivotType.HIGH,
         )
+
+
+def test_extremum_alias_maps_to_timestamp() -> None:
+    when = datetime(2026, 1, 1, 3, 0, tzinfo=UTC)
+    pivot = make_pivot(pivot_type=PivotType.HIGH, when=when)
+
+    assert pivot.extremum_at == when
+
+
+def test_rejects_confirmed_at_before_extremum() -> None:
+    with pytest.raises(DomainError, match="must not be before"):
+        Pivot(
+            id=EntityId.new(),
+            symbol=Symbol("EURUSD"),
+            timeframe=Timeframe.ONE_HOUR,
+            timestamp=datetime(2026, 1, 1, 2, 0, tzinfo=UTC),
+            price=Price.parse("1.00"),
+            pivot_type=PivotType.HIGH,
+            confirmed_at=datetime(2026, 1, 1, 1, 59, tzinfo=UTC),
+        )
+
+
+def test_rejects_non_utc_confirmed_at() -> None:
+    with pytest.raises(DomainError, match="UTC timezone"):
+        Pivot(
+            id=EntityId.new(),
+            symbol=Symbol("EURUSD"),
+            timeframe=Timeframe.ONE_HOUR,
+            timestamp=datetime(2026, 1, 1, 2, 0, tzinfo=UTC),
+            price=Price.parse("1.00"),
+            pivot_type=PivotType.HIGH,
+            confirmed_at=datetime(2026, 1, 1, 2, 5, tzinfo=timezone(timedelta(hours=1))),
+        )
+
+
+def test_is_confirmed_depends_on_as_of() -> None:
+    confirmed_at = datetime(2026, 1, 1, 4, 0, tzinfo=UTC)
+    pivot = Pivot(
+        id=EntityId.new(),
+        symbol=Symbol("EURUSD"),
+        timeframe=Timeframe.ONE_HOUR,
+        timestamp=datetime(2026, 1, 1, 3, 0, tzinfo=UTC),
+        price=Price.parse("1.00"),
+        pivot_type=PivotType.HIGH,
+        confirmed_at=confirmed_at,
+    )
+
+    assert not pivot.is_confirmed(as_of=datetime(2026, 1, 1, 3, 59, tzinfo=UTC))
+    assert pivot.is_confirmed(as_of=confirmed_at)
+    assert pivot.is_confirmed(as_of=datetime(2026, 1, 1, 5, 0, tzinfo=UTC))
+
+
+def test_is_confirmed_rejects_invalid_as_of_timezone() -> None:
+    pivot = make_pivot(pivot_type=PivotType.HIGH)
+    naive_as_of = datetime(2026, 1, 1, 0, 0, tzinfo=UTC).replace(tzinfo=None)
+
+    with pytest.raises(DomainError, match="as_of must use the UTC timezone"):
+        pivot.is_confirmed(as_of=naive_as_of)
