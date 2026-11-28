@@ -48,6 +48,10 @@ from elliottwaver.application.context_service import (
     ContextIdProvider,
     ContextService,
 )
+from elliottwaver.application.temporal_market_data import (
+    TemporalCandleRecord,
+    TemporalMarketDataProvider,
+)
 
 __all__ = [
     "ISSUE_CONFLUENCE_CONFLICTS",
@@ -87,6 +91,8 @@ __all__ = [
     "ContextService",
     "ForecastUseCase",
     "MarketDataProvider",
+    "TemporalCandleRecord",
+    "TemporalMarketDataProvider",
     "TimeframeAnalysisRequest",
     "TimeframeAnalysisResult",
     "TimeframeChartData",

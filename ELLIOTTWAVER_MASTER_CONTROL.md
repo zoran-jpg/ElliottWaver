@@ -1,15 +1,15 @@
 ELLIOTTWAVER — MASTER CONTROL
 Version: 1.0
 Erstellt: 2026-11-20
-Status: Steuerungsgrundlage; DEF-GOV-001 Dokumentationssynchronisation aktiv, EP-DEF-12 in Architekturplanung
+Status: Steuerungsgrundlage; DEF-GOV-001 abgeschlossen, EP-DEF-12 technisch akzeptiert (Merge ausstehend)
 Gültigkeit: Verbindlicher Arbeitsauftrag für GitHub Copilot im ElliottWaver-Repository.
 Hinweis: Historische Implementierungs- und Testergebnisse sind Berichte, keine aktuelle Repository-Verifikation.
 0. Schnellstart für Copilot
 Rolle: Senior Implementation Engineer. Lies diese Datei vollständig, prüfe die bestehenden Repository-Regeln (insbesondere .github/copilot-instructions.md) und befolge die strengere Sicherheitsregel bei Konflikten. Arbeite nur am ausdrücklich freigegebenen Paket.
 
-Aktuell freigegeben: DEF-GOV-001 — kontrollierte Dokumentationssynchronisation.
-Nächstes Paket: EP-DEF-12 — Architekturplanung (ohne Implementierungsfreigabe).
-Startbedingung: Implementierung erst nach ausdrücklicher Product-Owner-Freigabe.
+Aktuell freigegeben: EP-DEF-12 — Temporal Market Data Integration.
+Vorheriges Paket: DEF-GOV-001 — kontrollierte Dokumentationssynchronisation (abgeschlossen).
+Startbedingung: Implementierungsfreigabe liegt vor; Git-Schreiboperationen bleiben separat genehmigungspflichtig.
 
 Nach jedem Paket: Prüfergebnisse in engineering/HANDOVER.md dokumentieren, Änderungen und offene Risiken offenlegen, dann STOPP. Keine Folgepakete oder Commits ohne gesonderte Freigabe.
 
@@ -627,15 +627,17 @@ Roadmap-Hinweis:
 24. DEF-GOV-001 Kontrollierte Dokumentationssynchronisation (2026-11-28)
 
 Status:
-- DEF-GOV-001 ist als laufender Dokumentationsabgleich freigegeben.
-- EP-DEF-11 bleibt offiziell abgeschlossen.
-- EP-DEF-12 bleibt in Architekturplanung; keine Implementierungsfreigabe.
+- DEF-GOV-001 ist technisch abgeschlossen.
+- Erfolgreiche Post-Merge-Verifikation ist dokumentiert.
+- Feature-CI und Main-CI jeweils 4/4 erfolgreich verifiziert.
+- Neue verbindliche Entwicklungsbasis ist gesetzt.
+- EP-DEF-12 ist aktiv und zur Implementierung freigegeben.
 
 Verbindliche Referenzbasis:
-- `origin/main`: `f9431e0d83f3dead0f912926d817abff867a5206`
-- akzeptierter Feature-Commit: `e78b8118350b26ed4795597749fcef236be63e7a`
-- akzeptierter Tree: `7cc8305111e6805a1495a7b77bc0892f137871bc`
-- Pull Request #4 erfolgreich integriert.
+- `origin/main`: `db66bd6372363740b40624d81f065922f7c8ceb0`
+- akzeptierter Feature-Commit DEF-GOV-001: `15549f9b3ea0e8ac5f91e1d6ed958230f7269ce2`
+- akzeptierter Tree: `648ce8ed3447e12e69b09a64e7ebbe4dad677db0`
+- Pull Request #5 erfolgreich integriert.
 
 Abgenommener Qualitaetsstand (unveraendert):
 - 466 Tests bestanden.
@@ -651,3 +653,44 @@ Verbleibende fachliche Grenzen (unveraendert):
 - Kausale Pivot-/Swing-, Support/Resistance- und nachgelagerte Analyseintegration stehen aus.
 - Keine produktive Signalvalidierung.
 - Keine Strategie- oder Profitabilitaetsvalidierung.
+
+25. EP-DEF-12 Phase-D Architekturabnahme und Merge-Status (2026-11-28)
+
+Status:
+- EP-DEF-12 ist technisch akzeptiert.
+- Git-Integration/Merge ist ausstehend und weiterhin separat freigabepflichtig.
+
+Verifizierter Qualitaetsstand:
+- 516 Tests bestanden.
+- Coverage: 92,77 Prozent.
+- Ruff Format Check: 147 Dateien bereits formatiert.
+- Ruff Check: PASS.
+- MyPy: PASS (146 Dateien).
+
+Verifizierte Vertragslage:
+- T01 bis T40: vollstaendig nachgewiesen.
+- K01 bis K40: vollstaendig nachgewiesen.
+- DEF-EP12-001 bis DEF-EP12-006: behoben.
+
+Verifizierte Nachweise der finalen Regressionsergaenzungen:
+- T03: `test_load_candle_records_reports_line_when_adapter_forces_opened_at_mismatch` erzwingt adapterseitigen opened_at-Mismatch und fordert `DomainError` mit `CSV line 2`.
+- T10: `test_load_candle_records_reports_line_for_invalid_is_closed_value` fordert bei ungueltigem `is_closed` eine Fehlermeldung mit Zeilenbezug `CSV line 2`.
+- T29: `test_legacy_and_record_views_return_identical_candles` fordert volle Candle-Gleichheit zwischen Legacy-View und Record-View.
+- T31: Reihenfolgeinvarianz auf derselben Provider-Instanz wird in zwei Tests nachgewiesen:
+   - `test_duplicate_rules_legacy_compatible_are_order_invariant_per_instance`
+   - `test_duplicate_rules_contradictory_are_order_invariant_per_instance`
+- T39: `test_multiple_sequential_legacy_candles_keep_unknown_temporal_semantics` fordert fuer mehrere Legacy-Candles durchgehend `closed_at=None`, `available_at=None`, `is_closed=None` und `UNKNOWN`.
+
+Technische Kernaussagen EP-DEF-12:
+- Gemeinsamer Record-Cache ist verankert.
+- Verbindliche Duplikatregeln sind verankert.
+- Historischer SHA256-Ersatznachweis ist 13/13 dokumentiert; eine separate urspruengliche EP12-Baseline ist nicht nachgewiesen.
+
+Verbleibende Grenzen und offene Punkte:
+- Fingerprint-Grenzen bleiben bestehen.
+- Keine verbindliche Thread-Sicherheitsgarantie.
+- Produktive as_of-Integration sowie kausale Pivot-/Swing-Erkennung bleiben offen.
+- Es wird weiterhin keine systemweite Lookahead-Freiheit behauptet.
+
+Roadmap-Hinweis:
+- Roadmap V3.0 bleibt unveraendert.

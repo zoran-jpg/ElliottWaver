@@ -227,3 +227,27 @@ def test_load_candles_rejects_missing_symbol_column_with_bom_file(tmp_path: Path
             start_time=datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
             end_time=datetime(2026, 7, 21, 1, 0, tzinfo=UTC),
         )
+
+
+def test_load_candles_keeps_legacy_duplicate_row_behavior(tmp_path: Path) -> None:
+    csv_path = tmp_path / "legacy_duplicates.csv"
+    _write_csv(
+        csv_path,
+        """
+        symbol,timeframe,opened_at,open,high,low,close,volume
+        EURUSD,1h,2026-07-21T01:00:00Z,100,110,95,104,10
+        EURUSD,1h,2026-07-21T01:00:00Z,101,111,96,105,12
+        """,
+    )
+    provider = CsvMarketDataProvider(csv_path=csv_path)
+
+    candles = provider.load_candles(
+        symbol=Symbol("EURUSD"),
+        timeframe=MarketTimeframe.ONE_HOUR,
+        start_time=datetime(2026, 7, 21, 0, 0, tzinfo=UTC),
+        end_time=datetime(2026, 7, 21, 2, 0, tzinfo=UTC),
+    )
+
+    assert len(candles) == 2
+    assert candles[0].opened_at == datetime(2026, 7, 21, 1, 0, tzinfo=UTC)
+    assert candles[1].opened_at == datetime(2026, 7, 21, 1, 0, tzinfo=UTC)

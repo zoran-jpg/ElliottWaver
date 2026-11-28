@@ -1198,6 +1198,59 @@ Automatische Allowlist-Pruefung:
 64. `tests/unit/domain/projection/test_fibonacci_projection_engine.py`
 65. `tests/unit/domain/projection/test_projection_direction.py`
 66. `tests/unit/domain/projection/test_projection_input.py`
+
+## 23. EP-DEF-12 PHASE D - Dokumentationsabnahme (2026-11-28)
+
+Status:
+- EP-DEF-12 technisch akzeptiert.
+- Git-Integration/Merge ausstehend (separate Freigabe erforderlich).
+- Kein neues Engineering Package gestartet.
+
+Dokumentationsscope dieses Schritts:
+- `ELLIOTTWAVER_MASTER_CONTROL.md`
+- `docs/project/status/CURRENT_STATUS.md`
+- `docs/project/ROADMAP.md`
+- `engineering/HANDOVER.md`
+
+Verifizierter technischer Qualitaetsstand:
+- Gesamt: 516 Tests bestanden.
+- Coverage: 92,77 Prozent.
+- Ruff Format Check: 147 Dateien bereits formatiert.
+- Ruff Check: PASS.
+- MyPy: PASS (146 Dateien).
+
+Verbindliche Vertrags- und Defektnachweise:
+- T01-T40: vollstaendig nachgewiesen.
+- K01-K40: vollstaendig nachgewiesen.
+- DEF-EP12-001 bis DEF-EP12-006: behoben.
+
+Bestaetigte finale Regressionstests (tatsaechliche Namen und Assertions):
+- T03 Testname: `test_load_candle_records_reports_line_when_adapter_forces_opened_at_mismatch`.
+- T03 Assertion: `pytest.raises(DomainError, match="Temporal semantics opened_at mismatch in CSV line 2")`.
+- T10 Testname: `test_load_candle_records_reports_line_for_invalid_is_closed_value`.
+- T10 Assertions: `pytest.raises(DomainError, match="Invalid is_closed value")` plus `assert "CSV line 2" in str(error_info.value)`.
+- T29 Testname: `test_legacy_and_record_views_return_identical_candles`.
+- T29 Assertion: `assert tuple(candles) == tuple(record.candle for record in records)`.
+- T31 Testname A: `test_duplicate_rules_legacy_compatible_are_order_invariant_per_instance`.
+- T31 Assertion A: identische Endzeit in beiden Call-Reihenfolgen und identische Candle-Mengenlaenge.
+- T31 Testname B: `test_duplicate_rules_contradictory_are_order_invariant_per_instance`.
+- T31 Assertion B: in beiden Call-Reihenfolgen jeweils `DomainError` mit Match `contradictory temporal metadata`.
+- T39 Testname: `test_multiple_sequential_legacy_candles_keep_unknown_temporal_semantics`.
+- T39 Assertions: fuer alle sequenziellen Legacy-Records `closed_at is None`, `available_at is None`, `is_closed is None`, Status `UNKNOWN`.
+
+Integritaets- und Grenzbefunde:
+- Historischer SHA256-Ersatznachweis: 13/13 vorhanden.
+- Urspruengliche EP12-Baseline: nicht separat nachgewiesen.
+- Fingerprint-Grenzen bestehen fort.
+- Keine verbindliche Thread-Sicherheitsgarantie.
+
+Offene fachliche Anschlussbereiche (nicht Teil dieser Abnahme):
+- Produktive as_of-Integration bleibt offen.
+- Kausale Pivot-/Swing-Erkennung bleibt offen.
+- Keine Behauptung systemweiter Lookahead-Freiheit.
+
+Roadmap-Entscheidung:
+- Roadmap V3.0 bleibt unveraendert.
 67. `tests/unit/infrastructure/analysis/test_runtime_ports.py`
 68. `tests/unit/infrastructure/analysis/test_swing_preparation_adapter.py`
 69. `tests/unit/infrastructure/market_data/test_csv_market_data_provider.py`
@@ -1788,3 +1841,16 @@ Verbleibende fachliche Grenzen (unveraendert):
 - Produktive Marktdatenintegration sowie kausale Pivot-/Swing-, S/R- und Analyseintegration stehen aus.
 - Keine produktive Signalvalidierung.
 - Keine Strategie- oder Profitabilitaetsvalidierung.
+
+## 28. DEF-GOV-001 Abschluss und EP-DEF-12 Aktivierung (2026-11-28)
+
+Status:
+- DEF-GOV-001 ist technisch abgeschlossen.
+- Erfolgreiche Post-Merge-Verifikation ist dokumentiert.
+- Feature-CI und Main-CI jeweils 4/4 erfolgreich bestaetigt.
+- Neue verbindliche Entwicklungsbasis gesetzt: `origin/main` `db66bd6372363740b40624d81f065922f7c8ceb0`, Tree `648ce8ed3447e12e69b09a64e7ebbe4dad677db0`.
+- EP-DEF-12 ist aktiv und zur Implementierung freigegeben.
+
+Klarstellung:
+- Historische Nachweise bleiben unveraendert erhalten.
+- Roadmap V3.0 Ziele, Termine und Budgets bleiben unveraendert.

@@ -26,10 +26,16 @@ It is a planning document, not a source of verified quality metrics.
   - Accepted feature source: `e78b8118350b26ed4795597749fcef236be63e7a`
   - Accepted tree: `7cc8305111e6805a1495a7b77bc0892f137871bc`
   - Quality baseline: 466 passed, 92.73% coverage, feature CI 4/4, main CI 4/4.
-- DEF-GOV-001: In progress
-  - Scope: controlled synchronization of operational documentation before EP-DEF-12 implementation.
-- EP-DEF-12: Architecture planning
-  - Scope: temporal market data integration planning only, no implementation approval.
+- DEF-GOV-001: Completed
+  - Scope: controlled synchronization of operational documentation with successful post-merge verification.
+- EP-DEF-12: Technically accepted (merge pending)
+  - Scope: temporal market data integration within the approved implementation allowlist.
+  - Verified acceptance baseline: 516 passed, 92,77 Prozent coverage, Ruff format/check PASS, MyPy PASS.
+  - Contract verification: T01-T40 and K01-K40 complete.
+  - Closure status: DEF-EP12-001 to DEF-EP12-006 fixed.
+  - Verified constraints retained: shared record cache and binding duplicate rules.
+  - Remaining boundaries: fingerprint limits and no formal thread-safety guarantee.
+  - Open product follow-up remains outside this package: productive as_of integration and causal pivot/swing integration.
 - EP-08+ and further strategic packages: Planned
   - To be activated only after explicit Product Owner approval.
 
@@ -38,4 +44,5 @@ It is a planning document, not a source of verified quality metrics.
 - Forecast/projection domain engines are considered stable and not part of active refactoring scope unless a verified engine defect appears.
 - Roadmap V3.0 strategic goals, timelines, and time budgets remain unchanged.
 - EP-DEF-11 closure does not imply complete causal look-ahead safety for the full production chain.
+- EP-DEF-12 technical acceptance does not imply system-wide look-ahead freedom for the full production chain.
 - Productive temporal market-data integration, causal pivot/swing and support/resistance integration, and downstream causal analysis integration remain pending explicit packages.
