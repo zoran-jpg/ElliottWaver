@@ -20,12 +20,22 @@ It is a planning document, not a source of verified quality metrics.
   - Scope covered: governance/documentation foundations.
 - EP-DEF-06: Completed
   - Scope covered: interpreter-bound pip usage, constraints-based reproducibility, Ruff-only formatter strategy.
-- EP-07: In progress
-  - Scope: CHART-004 + DEF-001 + DEF-014.
-- EP-08+: Planned
+- EP-DEF-11: Completed (accepted post-merge)
+  - Scope covered: shared temporal domain and candle availability semantics.
+  - Merge baseline: `f9431e0d83f3dead0f912926d817abff867a5206`
+  - Accepted feature source: `e78b8118350b26ed4795597749fcef236be63e7a`
+  - Accepted tree: `7cc8305111e6805a1495a7b77bc0892f137871bc`
+  - Quality baseline: 466 passed, 92.73% coverage, feature CI 4/4, main CI 4/4.
+- DEF-GOV-001: In progress
+  - Scope: controlled synchronization of operational documentation before EP-DEF-12 implementation.
+- EP-DEF-12: Architecture planning
+  - Scope: temporal market data integration planning only, no implementation approval.
+- EP-08+ and further strategic packages: Planned
   - To be activated only after explicit Product Owner approval.
 
 ## Planning notes
 
 - Forecast/projection domain engines are considered stable and not part of active refactoring scope unless a verified engine defect appears.
-- Release readiness depends on successful execution of the open GitHub Actions matrix gate in addition to local gates.
+- Roadmap V3.0 strategic goals, timelines, and time budgets remain unchanged.
+- EP-DEF-11 closure does not imply complete causal look-ahead safety for the full production chain.
+- Productive temporal market-data integration, causal pivot/swing and support/resistance integration, and downstream causal analysis integration remain pending explicit packages.
